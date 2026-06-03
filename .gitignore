@@ -1,0 +1,26 @@
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+frontend/dist/
+backend/dist/
+
+.env
+.env.*
+!.env.example
+
+*.log
+npm-debug.log*
+
+.DS_Store
+
+coverage/
+
+.vite/
+.cache/
+
+tmp/
+*.pid
+
+Manual_SistemasMecatronicos_page-*.jpg
+Manual De Imagen Sistemas Mecatronicosc/
