@@ -247,9 +247,11 @@ import { useProjectStore } from '../stores/projectStore';
 import { useQuoteStore } from '../stores/quoteStore';
 import { aiApi, productsApi } from '../services/api';
 import type { QuoteAssistantPreview } from '../types';
+import { getPrimaryContact, normalizeCustomer } from '../utils/customerContacts';
 import { isAutomationDirectProduct, openAutomationDirectProduct } from '../utils/automationDirect';
 import { calculateQuoteTotals, getRiskContingencySuggestion, updateMaterialTotals, updateServiceTotals } from '../utils/quoteCalculations';
 import { createEmptyQuote } from '../utils/quoteDefaults';
+import { useProviderStore } from '../stores/providerStore';
 
 const steps = ['Informacion del proyecto', 'Entradas y salidas', 'Requerimientos PLC/HMI', 'Requerimientos de tablero electrico', 'Mano de obra/servicios', 'Materiales/BOM', 'Configuracion comercial', 'Revisar cotizacion'];
 const activeStep = ref(0);
@@ -257,6 +259,7 @@ const router = useRouter();
 const customers = useCustomerStore();
 const projects = useProjectStore();
 const quoteStore = useQuoteStore();
+const providers = useProviderStore();
 const catalogDialogVisible = ref(false);
 const catalogSearch = ref('');
 const catalogProducts = ref<any[]>([]);
@@ -343,7 +346,12 @@ function applyRisk() {
 }
 
 function addMaterial() {
-  quote.materials.push(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '' }));
+  quote.materials.push(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', providerId: null, quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '' }));
+}
+
+function matchedProviderId(supplier: string) {
+  const provider = providers.providers.find((entry) => String(entry.companyName || '').trim().toLowerCase() === String(supplier || '').trim().toLowerCase());
+  return provider?.id || null;
 }
 
 function addProductToBom(product: any) {
@@ -353,6 +361,7 @@ function addProductToBom(product: any) {
     description: product.description,
     brand: product.brand,
     supplier: product.supplier,
+    providerId: product.providerId || matchedProviderId(product.supplier),
     quantity: 1,
     unitCost,
     markupPercentage: quote.commercial.materialMarkupPercentage,
@@ -449,6 +458,7 @@ function applyAiMaterials() {
       description: item.description,
       brand: item.brand,
       supplier: item.supplier,
+      providerId: product?.providerId || matchedProviderId(item.supplier),
       quantity: item.quantity,
       unitCost,
       markupPercentage: quote.commercial.materialMarkupPercentage,
@@ -476,7 +486,14 @@ function refreshTotals() {
 
 async function createQuote() {
   if (!quote.services.length) buildSuggestedServices();
-  quote.customerSnapshot = customers.customers.find((customer) => customer.id === quote.customerId);
+  const customer = normalizeCustomer(customers.customers.find((item) => item.id === quote.customerId));
+  const recipientContact = getPrimaryContact(customer);
+  quote.recipientContactId = recipientContact?.id || null;
+  quote.customerSnapshot = {
+    ...customer,
+    selectedContact: recipientContact,
+    recipientContact
+  };
   quote.projectSnapshot = projects.projects.find((project) => project.id === quote.projectId);
   quote.wizard = { ...wizard };
   refreshTotals();
@@ -485,7 +502,7 @@ async function createQuote() {
 }
 
 onMounted(async () => {
-  await Promise.all([customers.fetchCustomers(), projects.fetchProjects()]);
+  await Promise.all([customers.fetchCustomers(), projects.fetchProjects(), providers.fetchProviders()]);
   applyRisk();
 });
 </script>

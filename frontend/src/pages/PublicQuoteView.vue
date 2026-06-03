@@ -15,8 +15,8 @@
         <el-card shadow="never">
           <template #header>Cliente</template>
           <strong>{{ quote?.customerSnapshot?.companyName || '-' }}</strong>
-          <p>{{ quote?.customerSnapshot?.contactName || '-' }}</p>
-          <p>{{ quote?.customerSnapshot?.email || '-' }}</p>
+          <p>{{ recipientContact?.name || quote?.customerSnapshot?.contactName || '-' }}</p>
+          <p>{{ recipientContact?.email || quote?.customerSnapshot?.email || '-' }}</p>
         </el-card>
         <el-card shadow="never">
           <template #header>Proyecto</template>
@@ -78,18 +78,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { publicQuotesApi } from '../services/api';
 import { generateQuotePdf } from '../services/pdfService';
 import { useSettingsStore } from '../stores/settingsStore';
+import { getContactById } from '../utils/customerContacts';
 import { quoteStatusLabels } from '../utils/quoteDefaults';
 
 const route = useRoute();
 const settings = useSettingsStore();
 const quote = ref<any>(null);
 const loading = ref(false);
+const recipientContact = computed(() => getContactById(quote.value?.customerSnapshot, quote.value?.recipientContactId));
 
 function money(value: number) {
   return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });

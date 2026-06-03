@@ -12,6 +12,8 @@ import ServiceRates from '../pages/ServiceRates.vue';
 import Settings from '../pages/Settings.vue';
 import Login from '../pages/Login.vue';
 import Products from '../pages/Products.vue';
+import Providers from '../pages/Providers.vue';
+import ProviderForm from '../pages/ProviderForm.vue';
 import PublicQuoteView from '../pages/PublicQuoteView.vue';
 import { useAuthStore } from '../stores/authStore';
 
@@ -33,6 +35,9 @@ const router = createRouter({
     { path: '/quotes/:id/edit', component: QuoteForm },
     { path: '/quote-assistant', component: GuidedQuoteAssistant },
     { path: '/products', component: Products },
+    { path: '/providers', component: Providers },
+    { path: '/providers/new', component: ProviderForm },
+    { path: '/providers/:id/edit', component: ProviderForm },
     { path: '/service-rates', component: ServiceRates },
     { path: '/settings', component: Settings }
   ]

@@ -8,9 +8,18 @@
     <el-card>
       <el-table :data="store.customers" v-loading="store.loading" stripe>
         <el-table-column prop="companyName" label="Empresa" min-width="180" />
-        <el-table-column prop="contactName" label="Contacto" min-width="160" />
-        <el-table-column prop="email" label="Correo" min-width="180" />
-        <el-table-column prop="phone" label="Telefono" min-width="130" />
+        <el-table-column label="Contacto principal" min-width="180">
+          <template #default="{ row }">{{ getPrimaryContact(row)?.name || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="Correo" min-width="180">
+          <template #default="{ row }">{{ getPrimaryContact(row)?.email || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="Telefono" min-width="130">
+          <template #default="{ row }">{{ getPrimaryContact(row)?.phone || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="Contactos" width="100" align="center">
+          <template #default="{ row }">{{ row.contacts?.length || 0 }}</template>
+        </el-table-column>
         <el-table-column prop="taxId" label="RFC / Tax ID" min-width="130" />
         <el-table-column label="Acciones" width="230">
           <template #default="{ row }">
@@ -29,6 +38,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { useCustomerStore } from '../stores/customerStore';
+import { getPrimaryContact } from '../utils/customerContacts';
 
 const store = useCustomerStore();
 onMounted(store.fetchCustomers);

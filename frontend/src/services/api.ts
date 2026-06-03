@@ -38,7 +38,8 @@ export const quotesApi = {
   duplicate: (id: string) => api.post(`/quotes/${id}/duplicate`).then((res) => res.data),
   family: (id: string) => api.get(`/quotes/${id}/family`).then((res) => res.data),
   revise: (id: string) => api.post(`/quotes/${id}/revise`).then((res) => res.data),
-  createVariant: (id: string, data: unknown) => api.post(`/quotes/${id}/variant`, data).then((res) => res.data)
+  createVariant: (id: string, data: unknown) => api.post(`/quotes/${id}/variant`, data).then((res) => res.data),
+  sendClientLink: (id: string, data: unknown) => api.post(`/quotes/${id}/send-client-link`, data).then((res) => res.data)
 };
 
 export const serviceRatesApi = {
@@ -61,12 +62,21 @@ export const productsApi = {
   create: (data: unknown) => api.post('/products', data).then((res) => res.data),
   update: (id: string, data: unknown) => api.put(`/products/${id}`, data).then((res) => res.data),
   remove: (id: string) => api.delete(`/products/${id}`),
+  backfillProvider: (data: unknown) => api.post('/products/backfill-provider', data).then((res) => res.data),
   refreshAutomationDirect: (id: string) => api.post(`/products/${id}/refresh-automationdirect`).then((res) => res.data),
   importXlsx: (file: File) => {
     const data = new FormData();
     data.append('file', file);
     return api.post('/products/import-xlsx', data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((res) => res.data);
   }
+};
+
+export const providersApi = {
+  list: () => api.get('/providers').then((res) => res.data),
+  get: (id: string) => api.get(`/providers/${id}`).then((res) => res.data),
+  create: (data: unknown) => api.post('/providers', data).then((res) => res.data),
+  update: (id: string, data: unknown) => api.put(`/providers/${id}`, data).then((res) => res.data),
+  remove: (id: string) => api.delete(`/providers/${id}`)
 };
 
 

@@ -176,3 +176,26 @@ partNumber, description, brand, supplier, category, unitCost, currency, stock, l
 ```
 
 The import upserts by `supplier + partNumber` and returns created, updated, skipped, and row-level validation errors.
+
+## Multi-contact customers and client email
+
+Customers now support multiple contacts with one primary contact.
+
+Quote emails use SMTP from the backend. Configure these environment variables outside git:
+
+```text
+APP_URL=https://cotizar.sistemasmecatronicos.com
+SMTP_HOST=mail.sistemasmecatronicos.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=saulo.rdz@sistemasmecatronicos.com
+SMTP_PASS=your-mail-password
+SMTP_FROM_EMAIL=saulo.rdz@sistemasmecatronicos.com
+SMTP_FROM_NAME=Sistemas Mecatronicos
+```
+
+After configuring the backend environment, restart the backend service:
+
+```bash
+./scripts/reset-server.sh --backend-only
+```

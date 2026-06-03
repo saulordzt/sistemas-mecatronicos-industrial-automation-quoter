@@ -1,4 +1,5 @@
 import { productRepository } from '../repositories/productRepository.js';
+import { providerRepository } from '../repositories/providerRepository.js';
 import { importProductsFromXlsx } from '../services/productImportService.js';
 import { fetchAutomationDirectProduct, mapAutomationDirectProduct } from '../services/automationDirectService.js';
 import { deleted, notFound } from '../utils/http.js';
@@ -67,5 +68,13 @@ export async function productRoutes(app) {
     if (!file) return { created: 0, updated: 0, skipped: 0, errors: [{ row: 0, errors: ['Missing file'] }] };
     const buffer = await file.toBuffer();
     return importProductsFromXlsx(buffer);
+  });
+
+  app.post('/api/products/backfill-provider', async (request, reply) => {
+    const providerId = request.body?.providerId;
+    const supplierName = request.body?.supplierName;
+    const provider = await providerRepository.findById(providerId);
+    if (!provider) return notFound(reply, 'Provider');
+    return productRepository.assignProviderBySupplier(providerId, supplierName || provider.companyName);
   });
 }

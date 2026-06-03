@@ -30,6 +30,7 @@ export function createEmptyQuote(): Quote {
     variantSequence: 1,
     variantName: 'Base',
     customerId: '',
+    recipientContactId: null,
     projectId: '',
     scopeOfWork: '',
     exclusions: 'Obra civil, permisos, paros de servicios y elementos no listados explicitamente estan excluidos.',
@@ -37,7 +38,7 @@ export function createEmptyQuote(): Quote {
     materials: [],
     services: [],
     commercial: {
-      materialMarkupPercentage: 20,
+      materialMarkupPercentage: 50,
       laborMarkupPercentage: 15,
       contingencyPercentage: 5,
       discountPercentage: 0,

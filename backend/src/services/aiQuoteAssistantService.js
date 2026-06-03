@@ -172,12 +172,15 @@ function buildPrompt({ brief, quote, customer, project, wizard, serviceRates, ca
         exclusions: quote?.exclusions || '',
         notes: quote?.notes || ''
       },
-      customer: customer ? {
-        companyName: customer.companyName,
-        contactName: customer.contactName,
-        address: customer.address,
-        notes: customer.notes
-      } : null,
+      customer: customer ? (() => {
+        const normalizedCustomer = normalizeCustomer(customer);
+        return {
+          companyName: normalizedCustomer.companyName,
+          primaryContactName: normalizedCustomer.primaryContact?.name || '',
+          address: normalizedCustomer.address,
+          notes: normalizedCustomer.notes
+        };
+      })() : null,
       project: project ? {
         projectName: project.projectName,
         projectType: project.projectType,
@@ -376,3 +379,4 @@ export async function generateQuoteAssistantPreview({ brief, quote = {}, wizard 
     preview: normalizePreview(raw, serviceRates, candidateProducts)
   };
 }
+import { normalizeCustomer } from '../utils/customerContacts.js';

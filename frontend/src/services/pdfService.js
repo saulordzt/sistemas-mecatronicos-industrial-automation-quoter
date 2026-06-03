@@ -63,6 +63,15 @@ function safe(value, fallback = '') {
   return value || fallback;
 }
 
+function resolveRecipientContact(quote) {
+  const contacts = Array.isArray(quote.customerSnapshot?.contacts) ? quote.customerSnapshot.contacts : [];
+  return contacts.find((contact) => contact.id === quote.recipientContactId)
+    || quote.customerSnapshot?.recipientContact
+    || quote.customerSnapshot?.selectedContact
+    || quote.customerSnapshot?.primaryContact
+    || null;
+}
+
 function addSectionTitle(doc, title, y) {
   doc.setFillColor(...brand.blue);
   doc.rect(14, y - 4, 182, 7, 'F');
@@ -98,6 +107,7 @@ export async function generateQuotePdf(quote, company = {}) {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   await registerFonts(doc);
   const currency = quote.commercial?.currency || 'USD';
+  const recipientContact = resolveRecipientContact(quote);
 
   doc.setFillColor(...brand.blue);
   doc.rect(0, 0, 216, 34, 'F');
@@ -126,7 +136,7 @@ export async function generateQuotePdf(quote, company = {}) {
           styles: { fontStyle: 'bold', fillColor: brand.pale }
         },
         {
-          content: `Cliente\n${safe(quote.customerSnapshot?.companyName)}\n${safe(quote.customerSnapshot?.contactName)}\n${safe(quote.customerSnapshot?.email)}\n${safe(quote.customerSnapshot?.phone)}\n${safe(quote.customerSnapshot?.address)}`,
+          content: `Cliente\n${safe(quote.customerSnapshot?.companyName)}\n${safe(recipientContact?.name || quote.customerSnapshot?.contactName)}\n${safe(recipientContact?.email || quote.customerSnapshot?.email)}\n${safe(recipientContact?.phone || quote.customerSnapshot?.phone)}\n${safe(quote.customerSnapshot?.address)}`,
           styles: { fillColor: [250, 251, 250] }
         }
       ]
@@ -234,4 +244,99 @@ export async function generateQuotePdf(quote, company = {}) {
   doc.text('Sistemas Mecatronicos | Automatizacion, control, tableros electricos, integracion y puesta en marcha.', 14, 270);
 
   doc.save(`${safe(quote.quoteNumber, 'quote')}.pdf`);
+}
+
+export async function generateProviderRfqPdf({ quote, company = {}, provider = {}, dueDate = '', notes = '', materials = [] }) {
+  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+  await registerFonts(doc);
+
+  doc.setFillColor(...brand.blue);
+  doc.rect(0, 0, 216, 34, 'F');
+  doc.setFillColor(...brand.green);
+  doc.rect(0, 31, 216, 3, 'F');
+  doc.addImage(logo, 'PNG', 14, 9.4, 46, 15.33);
+
+  doc.setFontSize(14);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('DINPro', 'bold');
+  doc.text(['SOLICITUD DE', 'COTIZACION'], 202, 12, { align: 'right', lineHeightFactor: 1.05 });
+  doc.setFontSize(9);
+  doc.setTextColor(224, 226, 230);
+  doc.setFont('DINPro', 'normal');
+  doc.text(`Referencia: ${safe(quote.quoteNumber)}`, 202, 25, { align: 'right' });
+  doc.text(`Proyecto: ${safe(quote.projectSnapshot?.projectName)}`, 202, 30, { align: 'right' });
+
+  autoTable(doc, {
+    startY: 41,
+    theme: 'plain',
+    styles: { font: 'DINPro', fontSize: 9, cellPadding: 1.5, textColor: brand.graphite },
+    body: [
+      [
+        {
+          content: `${safe(company.name, 'Sistemas Mecatronicos')}\n${safe(company.address)}\n${safe(company.phone)} | ${safe(company.email)}\n${safe(company.website)}\nRFC / Tax ID: ${safe(company.taxId)}`,
+          styles: { fontStyle: 'bold', fillColor: brand.pale }
+        },
+        {
+          content: `Proveedor\n${safe(provider.companyName)}\n${safe(provider.primaryContactName)}\n${safe(provider.primaryContactEmail)}\n${safe(provider.primaryContactPhone)}\n${safe(provider.address)}`,
+          styles: { fillColor: [250, 251, 250] }
+        }
+      ]
+    ],
+    columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 92 } }
+  });
+
+  let y = doc.lastAutoTable.finalY + 9;
+  addSectionTitle(doc, 'Datos de la Solicitud', y);
+  autoTable(doc, {
+    startY: y + 6,
+    theme: 'grid',
+    ...tableTheme(),
+    body: [
+      ['Proyecto', safe(quote.projectSnapshot?.projectName)],
+      ['Tipo de proyecto', safe(quote.projectSnapshot?.projectType)],
+      ['Fecha de solicitud', new Date().toLocaleDateString()],
+      ['Fecha limite de respuesta', safe(dueDate)],
+      ['Referencia interna', safe(quote.quoteNumber)]
+    ],
+    columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold' }, 1: { cellWidth: 132 } }
+  });
+
+  y = doc.lastAutoTable.finalY + 9;
+  addSectionTitle(doc, 'Partidas Solicitadas', y);
+  autoTable(doc, {
+    startY: y + 6,
+    head: [['Parte #', 'Descripcion', 'Marca', 'Cantidad']],
+    body: materials.map((item) => [
+      safe(item.partNumber),
+      safe(item.description),
+      safe(item.brand),
+      item.quantity || 0
+    ]),
+    ...tableTheme()
+  });
+
+  y = doc.lastAutoTable.finalY + 9;
+  if (y > 235) {
+    doc.addPage();
+    y = 18;
+  }
+
+  addSectionTitle(doc, 'Instrucciones y Notas', y);
+  doc.setFont('DINPro', 'normal');
+  doc.setTextColor(...brand.graphite);
+  doc.setFontSize(9);
+  const requestNotes = [
+    notes || 'Favor de compartir precio, tiempo de entrega, disponibilidad, vigencia y condiciones comerciales.',
+    provider.website ? `Sitio web proveedor: ${provider.website}` : ''
+  ].filter(Boolean).join('\n');
+  doc.text(doc.splitTextToSize(requestNotes, 182), 14, y + 10);
+
+  doc.setFillColor(...brand.green);
+  doc.rect(0, 274, 216, 5, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(...brand.steel);
+  doc.text('Documento de solicitud de cotizacion a proveedor generado por Sistemas Mecatronicos.', 14, 270);
+
+  const safeProviderName = safe(provider.companyName, 'proveedor').replace(/[^\w.-]+/g, '_');
+  doc.save(`RFQ_${safe(quote.quoteNumber, 'quote')}_${safeProviderName}.pdf`);
 }

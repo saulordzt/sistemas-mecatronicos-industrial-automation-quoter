@@ -9,39 +9,51 @@
     </div>
 
     <el-card v-if="!isMobile">
-      <el-table :data="groupedQuotes" row-key="id" :tree-props="{ children: 'children' }" v-loading="store.loading" stripe default-expand-all>
+      <el-table
+        :data="groupedQuotes"
+        row-key="id"
+        :tree-props="{ children: 'children' }"
+        :indent="30"
+        :row-class-name="quoteRowClassName"
+        v-loading="store.loading"
+        stripe
+        default-expand-all
+      >
         <el-table-column prop="quoteNumber" label="Cotizacion" min-width="220">
           <template #default="{ row }">
-            <div class="quote-cell">
-              <span>{{ row.quoteNumber }}</span>
+            <div :class="['quote-cell', { 'quote-cell-child': !isOriginalQuote(row) }]">
+              <div class="quote-cell-copy">
+                <span>{{ row.quoteNumber }}</span>
+                <small v-if="!isOriginalQuote(row)">Revision / Variante</small>
+              </div>
               <el-tag v-if="isOriginalQuote(row)" size="small" effect="plain">Original</el-tag>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="Variante" min-width="140">
+        <el-table-column v-if="showVariantColumn" label="Variante" min-width="140">
           <template #default="{ row }">{{ row.variantName || 'Base' }}</template>
         </el-table-column>
-        <el-table-column label="Revision" width="100" align="center">
+        <el-table-column v-if="showRevisionColumn" label="Revision" width="100" align="center">
           <template #default="{ row }">R{{ row.revisionNumber || 1 }}</template>
         </el-table-column>
         <el-table-column prop="customerSnapshot.companyName" label="Cliente" min-width="180" />
-        <el-table-column prop="projectSnapshot.projectName" label="Proyecto" min-width="180" />
+        <el-table-column v-if="showProjectColumn" prop="projectSnapshot.projectName" label="Proyecto" min-width="180" />
         <el-table-column prop="status" label="Estatus" width="120">
           <template #default="{ row }"><el-tag>{{ quoteStatusLabel(row.status) }}</el-tag></template>
         </el-table-column>
-        <el-table-column label="Creada" min-width="170">
+        <el-table-column v-if="showCreatedColumn" label="Creada" min-width="170">
           <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="Actualizada" min-width="170">
+        <el-table-column v-if="showUpdatedColumn" label="Actualizada" min-width="170">
           <template #default="{ row }">{{ formatDate(row.updatedAt) }}</template>
         </el-table-column>
-        <el-table-column label="Descargas PDF" width="140" align="center">
+        <el-table-column v-if="showPdfCountColumn" label="Descargas PDF" width="140" align="center">
           <template #default="{ row }">{{ row.clientPdfDownloadCount || 0 }}</template>
         </el-table-column>
         <el-table-column label="Total" width="160" align="right">
           <template #default="{ row }">{{ row.commercial?.currency }} {{ money(row.totals?.finalTotal) }}</template>
         </el-table-column>
-        <el-table-column label="Acciones" width="140" align="center">
+        <el-table-column label="Acciones" width="140" align="center" fixed="right">
           <template #default="{ row }">
             <el-dropdown trigger="click" @command="(command) => handleRowCommand(command, row)">
               <el-button size="small">
@@ -137,12 +149,21 @@ const store = useQuoteStore();
 const settings = useSettingsStore();
 const router = useRouter();
 const isMobile = ref(window.innerWidth < 760);
+const viewportWidth = ref(window.innerWidth);
 
 type QuoteTreeRow = Quote & { children?: QuoteTreeRow[] };
 
 function handleResize() {
+  viewportWidth.value = window.innerWidth;
   isMobile.value = window.innerWidth < 760;
 }
+
+const showCreatedColumn = computed(() => viewportWidth.value >= 1460);
+const showUpdatedColumn = computed(() => viewportWidth.value >= 1620);
+const showPdfCountColumn = computed(() => viewportWidth.value >= 1380);
+const showProjectColumn = computed(() => viewportWidth.value >= 1260);
+const showVariantColumn = computed(() => viewportWidth.value >= 1120);
+const showRevisionColumn = computed(() => viewportWidth.value >= 1020);
 
 const groupedQuotes = computed<QuoteTreeRow[]>(() => {
   const byFamily = new Map<string, Quote[]>();
@@ -194,6 +215,10 @@ function formatDate(value?: string) {
 
 function isOriginalQuote(row: Quote) {
   return !row.rootQuoteId || row.id === row.rootQuoteId;
+}
+
+function quoteRowClassName({ row }: { row: Quote }) {
+  return isOriginalQuote(row) ? 'quote-row-root' : 'quote-row-child';
 }
 
 async function duplicate(id: string) {
@@ -304,6 +329,29 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.quote-cell-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.quote-cell-copy small {
+  color: var(--sm-steel);
+  font-size: 12px;
+}
+
+.quote-cell-child {
+  opacity: 0.92;
+}
+
+:deep(.quote-row-child) {
+  --el-table-tr-bg-color: rgba(32, 51, 74, 0.035);
+}
+
+:deep(.quote-row-child td:first-child .cell) {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
 .quote-mobile-list {
   display: grid;
   gap: 16px;
@@ -364,7 +412,9 @@ onBeforeUnmount(() => {
 }
 
 .quote-mobile-child {
-  padding: 10px 0;
+  margin-left: 14px;
+  padding: 10px 0 10px 14px;
+  border-left: 2px solid var(--sm-line);
   border-bottom: 1px solid var(--sm-line);
 }
 

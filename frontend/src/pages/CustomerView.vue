@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h1>{{ customer?.companyName || 'Cliente' }}</h1>
-        <p class="muted">{{ customer?.contactName || 'Sin contacto asignado' }}</p>
+        <p class="muted">{{ primaryContact?.name || 'Sin contacto asignado' }}</p>
       </div>
       <div class="table-actions">
         <el-button @click="$router.push('/customers')">Atras</el-button>
@@ -16,9 +16,9 @@
         <template #header>Informacion del Cliente</template>
         <div class="detail-list">
           <div><strong>Empresa</strong><span>{{ customer?.companyName || '-' }}</span></div>
-          <div><strong>Contacto</strong><span>{{ customer?.contactName || '-' }}</span></div>
-          <div><strong>Correo</strong><span>{{ customer?.email || '-' }}</span></div>
-          <div><strong>Telefono</strong><span>{{ customer?.phone || '-' }}</span></div>
+          <div><strong>Contacto principal</strong><span>{{ primaryContact?.name || '-' }}</span></div>
+          <div><strong>Correo</strong><span>{{ primaryContact?.email || '-' }}</span></div>
+          <div><strong>Telefono</strong><span>{{ primaryContact?.phone || '-' }}</span></div>
           <div><strong>RFC / Tax ID</strong><span>{{ customer?.taxId || '-' }}</span></div>
           <div><strong>Direccion</strong><span>{{ customer?.address || '-' }}</span></div>
         </div>
@@ -38,6 +38,19 @@
     <el-card class="section-card">
       <template #header>Notas</template>
       <p class="notes-text">{{ customer?.notes || 'No hay notas registradas para este cliente.' }}</p>
+    </el-card>
+
+    <el-card class="section-card">
+      <template #header>Contactos</template>
+      <el-table :data="customer?.contacts || []" stripe>
+        <el-table-column label="Principal" width="100" align="center">
+          <template #default="{ row }"><el-tag :type="row.isPrimary ? 'success' : 'info'">{{ row.isPrimary ? 'Si' : 'No' }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="name" label="Nombre" min-width="180" />
+        <el-table-column prop="title" label="Puesto" min-width="160" />
+        <el-table-column prop="email" label="Correo" min-width="200" />
+        <el-table-column prop="phone" label="Telefono" min-width="140" />
+      </el-table>
     </el-card>
 
     <el-card class="section-card">
@@ -94,6 +107,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useCustomerStore } from '../stores/customerStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useQuoteStore } from '../stores/quoteStore';
+import { getPrimaryContact } from '../utils/customerContacts';
 import { quoteStatusLabels } from '../utils/quoteDefaults';
 
 const route = useRoute();
@@ -103,6 +117,7 @@ const projects = useProjectStore();
 const quotes = useQuoteStore();
 
 const customer = computed(() => customers.customers.find((item) => item.id === route.params.id));
+const primaryContact = computed(() => getPrimaryContact(customer.value));
 const clientProjects = computed(() => projects.projects.filter((project) => project.customerId === route.params.id));
 const clientQuotes = computed(() => quotes.quotes.filter((quote) => quote.customerId === route.params.id));
 const approvedQuotes = computed(() => clientQuotes.value.filter((quote) => quote.status === 'Approved'));

@@ -58,6 +58,23 @@ function sortProducts(left, right) {
 
 export const productRepository = {
   ...base,
+  async assignProviderBySupplier(providerId, supplierName) {
+    const conn = await getConnection();
+    const normalizedSupplier = normalizeSearch(supplierName);
+    const cursor = await table()
+      .filter((row) => row('supplier').default('').coerceTo('string').downcase().eq(normalizedSupplier))
+      .run(conn);
+    const products = await cursor.toArray();
+    let updated = 0;
+
+    for (const product of products) {
+      if (product.providerId === providerId) continue;
+      await base.update(product.id, { providerId });
+      updated += 1;
+    }
+
+    return { updated };
+  },
   async listPaginated({ page = 1, pageSize = 50, search = '', supplier = '', category = '' } = {}) {
     await ensureIndexes();
     const conn = await getConnection();

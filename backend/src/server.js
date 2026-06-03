@@ -8,6 +8,7 @@ import { serviceRateRoutes } from './routes/serviceRates.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { authRoutes } from './routes/auth.js';
 import { productRoutes } from './routes/products.js';
+import { providerRoutes } from './routes/providers.js';
 import { aiRoutes } from './routes/ai.js';
 import { requireAuth } from './utils/auth.js';
 
@@ -41,6 +42,7 @@ await app.register(projectRoutes);
 await app.register(quoteRoutes);
 await app.register(serviceRateRoutes);
 await app.register(productRoutes);
+await app.register(providerRoutes);
 await app.register(aiRoutes);
 
 const port = Number(process.env.PORT || 3000);

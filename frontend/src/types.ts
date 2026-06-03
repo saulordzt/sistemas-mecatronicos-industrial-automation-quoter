@@ -1,12 +1,25 @@
 export type Currency = 'MXN' | 'USD';
 export type QuoteStatus = 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Cancelled';
 
+export interface CustomerContact {
+  id?: string;
+  name: string;
+  email: string;
+  phone: string;
+  title?: string;
+  notes?: string;
+  isPrimary?: boolean;
+}
+
 export interface Customer {
   id?: string;
   companyName: string;
-  contactName: string;
-  email: string;
-  phone: string;
+  contacts: CustomerContact[];
+  primaryContactId?: string | null;
+  primaryContact?: CustomerContact | null;
+  contactName?: string;
+  email?: string;
+  phone?: string;
   address: string;
   taxId: string;
   notes: string;
@@ -29,6 +42,7 @@ export interface MaterialItem {
   description: string;
   brand: string;
   supplier: string;
+  providerId?: string | null;
   quantity: number;
   unitCost: number;
   markupPercentage: number;
@@ -86,6 +100,7 @@ export interface Quote {
   customerId: string;
   projectId: string;
   customerSnapshot?: Customer;
+  recipientContactId?: string | null;
   projectSnapshot?: Project;
   scopeOfWork: string;
   exclusions: string;
@@ -99,6 +114,9 @@ export interface Quote {
   updatedAt?: string;
   clientPdfDownloadCount?: number;
   lastClientPdfDownloadAt?: string;
+  clientEmailSendCount?: number;
+  lastClientEmailSentAt?: string;
+  lastClientEmailRecipients?: Array<{ id?: string; name: string; email: string }>;
 }
 
 
@@ -108,6 +126,7 @@ export interface Product {
   description: string;
   brand: string;
   supplier: string;
+  providerId?: string | null;
   category: string;
   unitCost: number;
   currency: Currency;
@@ -129,6 +148,19 @@ export interface ServiceRate {
   description: string;
   hourlyRate: number;
   currency: Currency;
+  active: boolean;
+}
+
+export interface Provider {
+  id?: string;
+  companyName: string;
+  primaryContactName: string;
+  primaryContactEmail: string;
+  primaryContactPhone: string;
+  address?: string;
+  website?: string;
+  taxId?: string;
+  notes?: string;
   active: boolean;
 }
 

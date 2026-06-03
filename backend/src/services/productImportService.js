@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { productRepository } from '../repositories/productRepository.js';
+import { providerRepository } from '../repositories/providerRepository.js';
 
 const fieldAliases = {
   partNumber: ['partNumber', 'part number', 'part_number', 'part', 'sku', 'catalog'],
@@ -25,12 +26,13 @@ function readAliased(row, field) {
   return match ? row[match] : undefined;
 }
 
-function normalizeProduct(row, rowNumber) {
+async function normalizeProduct(row, rowNumber) {
   const partNumber = String(readAliased(row, 'partNumber') || '').trim();
   const supplier = String(readAliased(row, 'supplier') || '').trim() || 'Unknown';
   const unitCostRaw = readAliased(row, 'unitCost');
   const unitCost = unitCostRaw === undefined || unitCostRaw === '' ? 0 : Number(unitCostRaw);
   const stockRaw = readAliased(row, 'stock');
+  const provider = supplier ? await providerRepository.findByCompanyName(supplier) : null;
 
   const errors = [];
   if (!partNumber) errors.push('Missing part number');
@@ -44,6 +46,7 @@ function normalizeProduct(row, rowNumber) {
       description: String(readAliased(row, 'description') || '').trim(),
       brand: String(readAliased(row, 'brand') || '').trim(),
       supplier,
+      providerId: provider?.id || null,
       category: String(readAliased(row, 'category') || '').trim(),
       unitCost: Number.isNaN(unitCost) ? 0 : unitCost,
       currency: String(readAliased(row, 'currency') || 'USD').trim().toUpperCase(),
@@ -63,7 +66,7 @@ export async function importProductsFromXlsx(buffer) {
   const summary = { created: 0, updated: 0, skipped: 0, errors: [] };
 
   for (const [index, row] of rows.entries()) {
-    const normalized = normalizeProduct(row, index + 2);
+    const normalized = await normalizeProduct(row, index + 2);
     if (normalized.errors.length) {
       summary.skipped += 1;
       summary.errors.push({ row: normalized.rowNumber, errors: normalized.errors });

@@ -11,6 +11,7 @@
         <el-menu-item index="/projects"><el-icon><Folder /></el-icon><span>Proyectos</span></el-menu-item>
         <el-menu-item index="/quotes"><el-icon><Document /></el-icon><span>Cotizaciones</span></el-menu-item>
         <el-menu-item index="/products"><el-icon><Box /></el-icon><span>Productos</span></el-menu-item>
+        <el-menu-item index="/providers"><el-icon><Van /></el-icon><span>Proveedores</span></el-menu-item>
         <el-menu-item index="/quote-assistant"><el-icon><Guide /></el-icon><span>Asistente</span></el-menu-item>
         <el-menu-item index="/service-rates"><el-icon><Timer /></el-icon><span>Tarifas</span></el-menu-item>
         <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>Configuracion</span></el-menu-item>
@@ -46,6 +47,7 @@
         <el-menu-item index="/projects"><el-icon><Folder /></el-icon><span>Proyectos</span></el-menu-item>
         <el-menu-item index="/quotes"><el-icon><Document /></el-icon><span>Cotizaciones</span></el-menu-item>
         <el-menu-item index="/products"><el-icon><Box /></el-icon><span>Productos</span></el-menu-item>
+        <el-menu-item index="/providers"><el-icon><Van /></el-icon><span>Proveedores</span></el-menu-item>
         <el-menu-item index="/quote-assistant"><el-icon><Guide /></el-icon><span>Asistente</span></el-menu-item>
         <el-menu-item index="/service-rates"><el-icon><Timer /></el-icon><span>Tarifas</span></el-menu-item>
         <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>Configuracion</span></el-menu-item>
@@ -87,7 +89,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { Box, DataBoard, Document, Folder, Guide, Menu, Moon, OfficeBuilding, Setting, Sunny, SwitchButton, Timer } from '@element-plus/icons-vue';
+import { Box, DataBoard, Document, Folder, Guide, Menu, Moon, OfficeBuilding, Setting, Sunny, SwitchButton, Timer, Van } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from './stores/authStore';
 

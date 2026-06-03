@@ -11,6 +11,8 @@
         <el-button v-if="quote.id" @click="createRevision">Nueva Revision</el-button>
         <el-button v-if="quote.id" @click="createVariant">Nueva Variante</el-button>
         <el-button v-if="quote.id" @click="copyClientLink">Vista Cliente</el-button>
+        <el-button v-if="quote.id" @click="emailDialogVisible = true">Enviar Liga</el-button>
+        <el-button v-if="quote.id" @click="openRfqDialog">Solicitudes a Proveedores</el-button>
         <el-button @click="exportPdf">Exportar PDF</el-button>
         <el-button type="primary" @click="save">Guardar Borrador</el-button>
       </div>
@@ -32,6 +34,11 @@
               <el-option v-for="customer in customers.customers" :key="customer.id" :label="customer.companyName" :value="customer.id" />
             </el-select>
           </el-form-item>
+          <el-form-item label="Contacto destinatario">
+            <el-select v-model="quote.recipientContactId" filterable @change="syncSnapshots">
+              <el-option v-for="contact in availableContacts" :key="contact.id" :label="contactLabel(contact)" :value="contact.id" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="Proyecto">
             <el-select v-model="quote.projectId" filterable @change="syncSnapshots">
               <el-option v-for="project in filteredProjects" :key="project.id" :label="project.projectName" :value="project.id" />
@@ -51,11 +58,17 @@
           <div class="table-actions"><el-button size="small" @click="catalogDialogVisible = true">Seleccionar del Catalogo</el-button><el-button size="small" @click="addMaterial">Agregar Material</el-button></div>
         </div>
       </template>
-      <div class="table-scroll"><el-table :data="quote.materials" stripe>
+      <div class="table-scroll"><el-table :data="quote.materials" stripe class="materials-table">
         <el-table-column label="No. de parte" min-width="140"><template #default="{ row }"><el-input v-model="row.partNumber" /></template></el-table-column>
         <el-table-column label="Descripcion" min-width="220"><template #default="{ row }"><el-input v-model="row.description" /></template></el-table-column>
         <el-table-column label="Marca" min-width="120"><template #default="{ row }"><el-input v-model="row.brand" /></template></el-table-column>
-        <el-table-column label="Proveedor" min-width="140"><template #default="{ row }"><el-input v-model="row.supplier" /></template></el-table-column>
+        <el-table-column label="Proveedor" min-width="210">
+          <template #default="{ row }">
+            <el-select v-model="row.providerId" filterable clearable @change="(value) => assignProviderToMaterial(row, value)">
+              <el-option v-for="provider in providerOptions" :key="provider.id" :label="providerLabel(provider)" :value="provider.id" :disabled="provider.active === false" />
+            </el-select>
+          </template>
+        </el-table-column>
         <el-table-column label="Cant." width="110"><template #default="{ row }"><el-input-number v-model="row.quantity" :min="0" @change="refreshTotals" /></template></el-table-column>
         <el-table-column label="Costo unitario" width="140"><template #default="{ row }"><el-input-number v-model="row.unitCost" :min="0" :precision="2" @change="refreshTotals" /></template></el-table-column>
         <el-table-column label="Margen %" width="130"><template #default="{ row }"><el-input-number v-model="row.markupPercentage" :min="0" @change="refreshTotals" /></template></el-table-column>
@@ -98,6 +111,59 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="emailDialogVisible" title="Enviar liga al cliente" width="680px">
+      <el-form label-position="top">
+        <el-form-item label="Destinatarios">
+          <el-select v-model="emailForm.contactIds" multiple filterable style="width: 100%">
+            <el-option v-for="contact in availableContacts" :key="contact.id" :label="contactLabel(contact)" :value="contact.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Asunto">
+          <el-input v-model="emailForm.subject" />
+        </el-form-item>
+        <el-form-item label="Mensaje">
+          <el-input v-model="emailForm.message" type="textarea" :rows="5" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="emailDialogVisible = false">Cancelar</el-button>
+        <el-button type="primary" :loading="sendingEmail" @click="sendClientLinkEmail">Enviar</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="rfqDialogVisible" title="Solicitudes a proveedores" width="720px">
+      <el-form label-position="top">
+        <el-form-item label="Fecha limite de respuesta">
+          <el-input v-model="rfqForm.dueDate" type="date" />
+        </el-form-item>
+        <el-form-item label="Notas para proveedores">
+          <el-input v-model="rfqForm.notes" type="textarea" :rows="4" />
+        </el-form-item>
+      </el-form>
+
+      <el-alert
+        v-if="rfqMissingRows.length"
+        type="warning"
+        :closable="false"
+        :title="`Hay ${rfqMissingRows.length} materiales sin proveedor asignado.`"
+        description="Asigna un proveedor a cada material antes de generar las solicitudes."
+      />
+
+      <el-table :data="rfqProviderSummary" stripe style="margin-top: 12px">
+        <el-table-column prop="providerName" label="Proveedor" min-width="220" />
+        <el-table-column prop="contactName" label="Contacto" min-width="180" />
+        <el-table-column prop="contactEmail" label="Correo" min-width="220" />
+        <el-table-column prop="itemCount" label="Partidas" width="100" align="center" />
+      </el-table>
+
+      <template #footer>
+        <el-button @click="rfqDialogVisible = false">Cancelar</el-button>
+        <el-button type="primary" :disabled="Boolean(rfqMissingRows.length || !rfqProviderSummary.length)" @click="generateProviderRfqs">
+          Generar PDFs
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-card class="section-card">
       <template #header>
         <div class="page-header" style="margin: 0">
@@ -136,9 +202,16 @@
     <el-card>
       <template #header>Resumen Comercial</template>
       <div v-if="quote.id" class="quote-share-summary">
-        <span>Descargas PDF</span>
-        <strong>{{ quote.clientPdfDownloadCount || 0 }}</strong>
-        <small v-if="quote.lastClientPdfDownloadAt">Ultima: {{ new Date(quote.lastClientPdfDownloadAt).toLocaleString() }}</small>
+        <div>
+          <span>Descargas PDF</span>
+          <strong>{{ quote.clientPdfDownloadCount || 0 }}</strong>
+          <small v-if="quote.lastClientPdfDownloadAt">Ultima: {{ new Date(quote.lastClientPdfDownloadAt).toLocaleString() }}</small>
+        </div>
+        <div>
+          <span>Correos enviados</span>
+          <strong>{{ quote.clientEmailSendCount || 0 }}</strong>
+          <small v-if="quote.lastClientEmailSentAt">Ultimo: {{ new Date(quote.lastClientEmailSentAt).toLocaleString() }}</small>
+        </div>
       </div>
       <div class="totals-panel">
         <div v-for="item in totalsDisplay" :key="item.label" class="total-line">
@@ -177,7 +250,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowLeft, TopRight } from '@element-plus/icons-vue';
@@ -185,8 +258,10 @@ import { useCustomerStore } from '../stores/customerStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useProviderStore } from '../stores/providerStore';
 import { productsApi, quotesApi } from '../services/api';
-import { generateQuotePdf } from '../services/pdfService';
+import { generateProviderRfqPdf, generateQuotePdf } from '../services/pdfService';
+import { getContactById, getPrimaryContact, normalizeCustomer } from '../utils/customerContacts';
 import { isAutomationDirectProduct, openAutomationDirectProduct } from '../utils/automationDirect';
 import { calculateQuoteTotals, updateMaterialTotals, updateServiceTotals } from '../utils/quoteCalculations';
 import { createEmptyQuote, quoteStatusLabels, quoteStatuses, serviceTypes } from '../utils/quoteDefaults';
@@ -197,7 +272,10 @@ const customers = useCustomerStore();
 const projects = useProjectStore();
 const quotes = useQuoteStore();
 const settings = useSettingsStore();
+const providers = useProviderStore();
 const catalogDialogVisible = ref(false);
+const emailDialogVisible = ref(false);
+const rfqDialogVisible = ref(false);
 const catalogSearch = ref('');
 const catalogProducts = ref<any[]>([]);
 const catalogLoading = ref(false);
@@ -205,9 +283,43 @@ const catalogPage = ref(1);
 const catalogPageSize = ref(50);
 const catalogTotal = ref(0);
 const familyQuotes = ref<any[]>([]);
+const sendingEmail = ref(false);
 const quote = reactive<any>(createEmptyQuote());
+const emailForm = reactive({
+  contactIds: [] as string[],
+  subject: '',
+  message: ''
+});
+const rfqForm = reactive({
+  dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+  notes: 'Favor de enviar su mejor tiempo de entrega, vigencia, condiciones comerciales y disponibilidad.'
+});
 
 const filteredProjects = computed(() => projects.projects.filter((project) => !quote.customerId || project.customerId === quote.customerId));
+const currentCustomer = computed(() => normalizeCustomer(customers.customers.find((customer) => customer.id === quote.customerId)));
+const availableContacts = computed(() => currentCustomer.value.contacts || []);
+const selectedRecipient = computed(() => getContactById(currentCustomer.value, quote.recipientContactId));
+const providerOptions = computed(() => providers.providers);
+const rfqMissingRows = computed(() => quote.materials.filter((item: any) => !item.providerId));
+const rfqProviderSummary = computed(() => {
+  const grouped = new Map<string, any>();
+  for (const item of quote.materials) {
+    if (!item.providerId) continue;
+    const provider = providers.providers.find((entry) => entry.id === item.providerId);
+    if (!provider) continue;
+    if (!grouped.has(provider.id)) {
+      grouped.set(provider.id, {
+        providerId: provider.id,
+        providerName: provider.companyName,
+        contactName: provider.primaryContactName,
+        contactEmail: provider.primaryContactEmail,
+        itemCount: 0
+      });
+    }
+    grouped.get(provider.id).itemCount += 1;
+  }
+  return [...grouped.values()];
+});
 let catalogSearchTimer: number | undefined;
 
 async function fetchCatalogProducts(page = catalogPage.value) {
@@ -262,8 +374,26 @@ function convertedProductCost(product: any) {
 }
 
 function syncSnapshots() {
-  quote.customerSnapshot = customers.customers.find((customer) => customer.id === quote.customerId);
+  const customer = customers.customers.find((item) => item.id === quote.customerId);
+  const normalizedCustomer = normalizeCustomer(customer);
+  if (!normalizedCustomer.contacts.find((contact) => contact.id === quote.recipientContactId)) {
+    quote.recipientContactId = normalizedCustomer.primaryContactId || null;
+  }
+  const recipientContact = getContactById(normalizedCustomer, quote.recipientContactId);
+  quote.customerSnapshot = {
+    ...normalizedCustomer,
+    selectedContact: recipientContact,
+    recipientContact
+  };
   quote.projectSnapshot = projects.projects.find((project) => project.id === quote.projectId);
+}
+
+function contactLabel(contact: any) {
+  return [contact.name, contact.title, contact.email].filter(Boolean).join(' | ');
+}
+
+function providerLabel(provider: any) {
+  return provider.active === false ? `${provider.companyName} (Inactivo)` : provider.companyName;
 }
 
 function refreshTotals() {
@@ -278,7 +408,13 @@ function applyMaterialMarkup() {
 }
 
 function addMaterial() {
-  quote.materials.push(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '' }));
+  quote.materials.push(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', providerId: null, quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '' }));
+}
+
+function assignProviderToMaterial(material: any, providerId?: string | null) {
+  material.providerId = providerId || null;
+  const provider = providers.providers.find((entry) => entry.id === providerId);
+  if (provider) material.supplier = provider.companyName;
 }
 
 function addProductToBom(product: any) {
@@ -288,6 +424,7 @@ function addProductToBom(product: any) {
     description: product.description,
     brand: product.brand,
     supplier: product.supplier,
+    providerId: product.providerId || matchedProviderId(product.supplier),
     quantity: 1,
     unitCost,
     markupPercentage: quote.commercial.materialMarkupPercentage,
@@ -301,6 +438,23 @@ function addProductToBom(product: any) {
     exchangeRateApplied: product.currency === 'USD' && quote.commercial.currency === 'MXN' ? quote.commercial.usdToMxnRate : undefined
   }));
   refreshTotals();
+}
+
+function matchedProviderId(supplier: string) {
+  const provider = providers.providers.find((entry) => String(entry.companyName || '').trim().toLowerCase() === String(supplier || '').trim().toLowerCase());
+  return provider?.id || null;
+}
+
+function normalizeMaterialProviders() {
+  quote.materials = quote.materials.map((item: any) => {
+    const providerId = item.providerId || matchedProviderId(item.supplier);
+    const provider = providers.providers.find((entry) => entry.id === providerId);
+    return {
+      ...item,
+      providerId: providerId || null,
+      supplier: provider?.companyName || item.supplier || ''
+    };
+  });
 }
 
 function removeMaterial(index: number) {
@@ -326,6 +480,7 @@ async function loadFamilyQuotes() {
 }
 
 async function save() {
+  normalizeMaterialProviders();
   syncSnapshots();
   refreshTotals();
   const saved = await quotes.saveQuote(quote);
@@ -364,11 +519,73 @@ async function copyClientLink() {
   ElMessage.success('Liga de cotizacion para cliente copiada');
 }
 
+function prepareEmailDialog() {
+  const recipient = selectedRecipient.value || getPrimaryContact(currentCustomer.value);
+  const projectName = quote.projectSnapshot?.projectName ? ` para el proyecto ${quote.projectSnapshot.projectName}` : '';
+  emailForm.contactIds = recipient?.id ? [recipient.id] : [];
+  emailForm.subject = `Cotizacion ${quote.quoteNumber} - Sistemas Mecatronicos`;
+  emailForm.message = recipient?.name
+    ? `Hola ${recipient.name}, compartimos la liga de la cotizacion ${quote.quoteNumber}${projectName}.`
+    : `Compartimos la liga de la cotizacion ${quote.quoteNumber}${projectName}.`;
+}
+
+async function sendClientLinkEmail() {
+  if (!quote.id) return;
+  sendingEmail.value = true;
+  try {
+    settings.load();
+    const result = await quotesApi.sendClientLink(quote.id, {
+      contactIds: emailForm.contactIds,
+      subject: emailForm.subject,
+      message: emailForm.message,
+      company: settings.company
+    });
+    quote.clientEmailSendCount = result.clientEmailSendCount;
+    quote.lastClientEmailSentAt = result.lastClientEmailSentAt;
+    quote.lastClientEmailRecipients = result.lastClientEmailRecipients;
+    emailDialogVisible.value = false;
+    ElMessage.success('Correo enviado');
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || 'No fue posible enviar el correo');
+  } finally {
+    sendingEmail.value = false;
+  }
+}
+
 function exportPdf() {
   syncSnapshots();
   refreshTotals();
   settings.load();
   generateQuotePdf(quote, settings.company);
+}
+
+function openRfqDialog() {
+  normalizeMaterialProviders();
+  rfqDialogVisible.value = true;
+}
+
+function providerQuoteMaterials(providerId: string) {
+  return quote.materials.filter((item: any) => item.providerId === providerId);
+}
+
+function generateProviderRfqs() {
+  normalizeMaterialProviders();
+  syncSnapshots();
+  settings.load();
+  for (const providerSummary of rfqProviderSummary.value) {
+    const provider = providers.providers.find((entry) => entry.id === providerSummary.providerId);
+    if (!provider) continue;
+    generateProviderRfqPdf({
+      quote,
+      company: settings.company,
+      provider,
+      dueDate: rfqForm.dueDate,
+      notes: rfqForm.notes,
+      materials: providerQuoteMaterials(provider.id)
+    });
+  }
+  rfqDialogVisible.value = false;
+  ElMessage.success(`Se generaron ${rfqProviderSummary.value.length} solicitudes`);
 }
 
 function goBack() {
@@ -377,10 +594,17 @@ function goBack() {
 
 onMounted(async () => {
   settings.load();
-  await Promise.all([customers.fetchCustomers(), projects.fetchProjects()]);
+  await Promise.all([customers.fetchCustomers(), projects.fetchProjects(), providers.fetchProviders()]);
   if (route.params.id) Object.assign(quote, await quotesApi.get(route.params.id as string));
+  else quote.recipientContactId = null;
+  normalizeMaterialProviders();
   refreshTotals();
+  syncSnapshots();
   await loadFamilyQuotes();
+});
+
+watch(emailDialogVisible, (visible) => {
+  if (visible) prepareEmailDialog();
 });
 </script>
 
@@ -393,5 +617,19 @@ onMounted(async () => {
 
 .quote-form-title h1 {
   margin: 0;
+}
+
+.materials-table :deep(.el-input-number) {
+  width: 100%;
+}
+
+.materials-table :deep(.el-input-number__decrease),
+.materials-table :deep(.el-input-number__increase) {
+  display: none;
+}
+
+.materials-table :deep(.el-input-number .el-input__wrapper) {
+  padding-left: 11px;
+  padding-right: 11px;
 }
 </style>
