@@ -13,6 +13,7 @@
         <el-menu-item index="/products"><el-icon><Box /></el-icon><span>Productos</span></el-menu-item>
         <el-menu-item index="/providers"><el-icon><Van /></el-icon><span>Proveedores</span></el-menu-item>
         <el-menu-item index="/quote-assistant"><el-icon><Guide /></el-icon><span>Asistente</span></el-menu-item>
+        <el-menu-item index="/assistant-workspace"><el-icon><ChatDotRound /></el-icon><span>AI Chat</span></el-menu-item>
         <el-menu-item index="/service-rates"><el-icon><Timer /></el-icon><span>Tarifas</span></el-menu-item>
         <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>Configuracion</span></el-menu-item>
       </el-menu>
@@ -49,6 +50,7 @@
         <el-menu-item index="/products"><el-icon><Box /></el-icon><span>Productos</span></el-menu-item>
         <el-menu-item index="/providers"><el-icon><Van /></el-icon><span>Proveedores</span></el-menu-item>
         <el-menu-item index="/quote-assistant"><el-icon><Guide /></el-icon><span>Asistente</span></el-menu-item>
+        <el-menu-item index="/assistant-workspace"><el-icon><ChatDotRound /></el-icon><span>AI Chat</span></el-menu-item>
         <el-menu-item index="/service-rates"><el-icon><Timer /></el-icon><span>Tarifas</span></el-menu-item>
         <el-menu-item index="/settings"><el-icon><Setting /></el-icon><span>Configuracion</span></el-menu-item>
       </el-menu>
@@ -78,6 +80,9 @@
           <span>Propuestas profesionales para automatizacion, control, tableros y puesta en marcha</span>
         </div>
         <div class="topbar-actions">
+          <el-tag :type="isOnline ? 'success' : 'warning'">{{ isOnline ? 'En linea' : 'Sin conexion' }}</el-tag>
+          <el-tag v-if="pendingSyncCount" type="info">Pendientes: {{ pendingSyncCount }}</el-tag>
+          <el-button v-if="installAvailable" @click="installApp">Instalar app</el-button>
         </div>
       </el-header>
       <el-main>
@@ -89,16 +94,23 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { Box, DataBoard, Document, Folder, Guide, Menu, Moon, OfficeBuilding, Setting, Sunny, SwitchButton, Timer, Van } from '@element-plus/icons-vue';
+import { Box, ChatDotRound, DataBoard, Document, Folder, Guide, Menu, Moon, OfficeBuilding, Setting, Sunny, SwitchButton, Timer, Van } from '@element-plus/icons-vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from './stores/authStore';
+import { useQuoteStore } from './stores/quoteStore';
+import { getPendingQuoteCount } from './utils/offlineQueue';
 
 const auth = useAuthStore();
+const quotes = useQuoteStore();
 const router = useRouter();
 const darkMode = ref(document.documentElement.classList.contains('dark'));
 const isMobile = ref(window.innerWidth < 960);
 const mobileNavOpen = ref(false);
 const desktopNavOpen = ref(true);
+const isOnline = ref(navigator.onLine);
+const pendingSyncCount = ref(getPendingQuoteCount());
+const installAvailable = ref(false);
+const deferredInstallPrompt = ref<any>(null);
 
 function handleResize() {
   isMobile.value = window.innerWidth < 960;
@@ -129,12 +141,49 @@ function logout() {
   router.push('/login');
 }
 
+function updatePendingSyncCount() {
+  pendingSyncCount.value = getPendingQuoteCount();
+}
+
+async function handleOnline() {
+  isOnline.value = true;
+  await quotes.syncPendingQuotes().catch(() => {});
+  updatePendingSyncCount();
+}
+
+function handleOffline() {
+  isOnline.value = false;
+}
+
+function onBeforeInstallPrompt(event: Event) {
+  event.preventDefault();
+  deferredInstallPrompt.value = event;
+  installAvailable.value = true;
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt.value) return;
+  deferredInstallPrompt.value.prompt();
+  await deferredInstallPrompt.value.userChoice?.catch(() => null);
+  deferredInstallPrompt.value = null;
+  installAvailable.value = false;
+}
+
 onMounted(() => {
   window.addEventListener('resize', handleResize);
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt as EventListener);
+  window.addEventListener('offline-queue-changed', updatePendingSyncCount as EventListener);
   handleResize();
+  updatePendingSyncCount();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
+  window.removeEventListener('online', handleOnline);
+  window.removeEventListener('offline', handleOffline);
+  window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt as EventListener);
+  window.removeEventListener('offline-queue-changed', updatePendingSyncCount as EventListener);
 });
 </script>

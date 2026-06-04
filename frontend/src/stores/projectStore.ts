@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia';
 import { projectsApi } from '../services/api';
 import type { Project } from '../types';
+import { readCachedValue, writeCachedValue } from '../utils/localCache';
+
+const cacheKey = 'automation-quoter-projects-cache';
 
 export const useProjectStore = defineStore('projects', {
   state: () => ({
@@ -12,6 +15,9 @@ export const useProjectStore = defineStore('projects', {
       this.loading = true;
       try {
         this.projects = await projectsApi.list();
+        writeCachedValue(cacheKey, this.projects);
+      } catch {
+        this.projects = readCachedValue<Project[]>(cacheKey, []);
       } finally {
         this.loading = false;
       }

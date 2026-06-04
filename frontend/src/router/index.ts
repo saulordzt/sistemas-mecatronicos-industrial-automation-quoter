@@ -8,6 +8,7 @@ import ProjectForm from '../pages/ProjectForm.vue';
 import Quotes from '../pages/Quotes.vue';
 import QuoteForm from '../pages/QuoteForm.vue';
 import GuidedQuoteAssistant from '../pages/GuidedQuoteAssistant.vue';
+import AssistantWorkspace from '../pages/AssistantWorkspace.vue';
 import ServiceRates from '../pages/ServiceRates.vue';
 import Settings from '../pages/Settings.vue';
 import Login from '../pages/Login.vue';
@@ -34,6 +35,7 @@ const router = createRouter({
     { path: '/quotes/new', component: QuoteForm },
     { path: '/quotes/:id/edit', component: QuoteForm },
     { path: '/quote-assistant', component: GuidedQuoteAssistant },
+    { path: '/assistant-workspace', component: AssistantWorkspace },
     { path: '/products', component: Products },
     { path: '/providers', component: Providers },
     { path: '/providers/new', component: ProviderForm },

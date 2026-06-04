@@ -71,6 +71,10 @@ export const productsApi = {
   }
 };
 
+export const materialsApi = {
+  extractFromUrl: (data: unknown) => api.post('/materials/extract-from-url', data).then((res) => res.data)
+};
+
 export const providersApi = {
   list: () => api.get('/providers').then((res) => res.data),
   get: (id: string) => api.get(`/providers/${id}`).then((res) => res.data),
@@ -87,4 +91,19 @@ export const publicQuotesApi = {
 
 export const aiApi = {
   generateQuoteAssistantPreview: (data: unknown) => api.post('/ai/quote-assistant-preview', data).then((res) => res.data)
+};
+
+export const assistantApi = {
+  listSessions: () => api.get('/assistant/sessions').then((res) => res.data),
+  createSession: (data: unknown = {}) => api.post('/assistant/sessions', data).then((res) => res.data),
+  getSession: (id: string) => api.get(`/assistant/sessions/${id}`).then((res) => res.data),
+  addMessage: (id: string, data: unknown) => api.post(`/assistant/sessions/${id}/messages`, data).then((res) => res.data),
+  uploadAttachments: (id: string, files: File[]) => {
+    const data = new FormData();
+    files.forEach((file) => data.append('file', file));
+    return api.post(`/assistant/sessions/${id}/attachments`, data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((res) => res.data);
+  },
+  processSession: (id: string) => api.post(`/assistant/sessions/${id}/process`).then((res) => res.data),
+  createOrUpdateDraft: (id: string) => api.post(`/assistant/sessions/${id}/create-or-update-draft`).then((res) => res.data),
+  getDraftQuote: (id: string) => api.get(`/assistant/sessions/${id}/draft-quote`).then((res) => res.data)
 };

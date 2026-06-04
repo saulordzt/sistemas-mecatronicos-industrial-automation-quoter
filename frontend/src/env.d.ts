@@ -5,3 +5,6 @@ declare module '*.vue' {
 }
 
 declare module '*.png';
+declare module 'virtual:pwa-register' {
+  export function registerSW(options?: Record<string, unknown>): (reloadPage?: boolean) => Promise<void>;
+}

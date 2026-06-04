@@ -8,11 +8,11 @@
         <h1>{{ quote.id ? 'Editar Cotizacion' : 'Nueva Cotizacion' }}</h1>
       </div>
       <div class="table-actions">
-        <el-button v-if="quote.id" @click="createRevision">Nueva Revision</el-button>
-        <el-button v-if="quote.id" @click="createVariant">Nueva Variante</el-button>
-        <el-button v-if="quote.id" @click="copyClientLink">Vista Cliente</el-button>
-        <el-button v-if="quote.id" @click="emailDialogVisible = true">Enviar Liga</el-button>
-        <el-button v-if="quote.id" @click="openRfqDialog">Solicitudes a Proveedores</el-button>
+        <el-button v-if="hasRemoteQuote" @click="createRevision">Nueva Revision</el-button>
+        <el-button v-if="hasRemoteQuote" @click="createVariant">Nueva Variante</el-button>
+        <el-button v-if="hasRemoteQuote" @click="copyClientLink">Vista Cliente</el-button>
+        <el-button v-if="hasRemoteQuote" @click="emailDialogVisible = true">Enviar Liga</el-button>
+        <el-button v-if="hasRemoteQuote" @click="openRfqDialog">Solicitudes a Proveedores</el-button>
         <el-button @click="exportPdf">Exportar PDF</el-button>
         <el-button type="primary" @click="save">Guardar Borrador</el-button>
       </div>
@@ -55,18 +55,35 @@
       <template #header>
         <div class="page-header" style="margin: 0">
           <strong>Lista de Materiales</strong>
-          <div class="table-actions"><el-button size="small" @click="catalogDialogVisible = true">Seleccionar del Catalogo</el-button><el-button size="small" @click="addMaterial">Agregar Material</el-button></div>
+          <div class="table-actions">
+            <el-button size="small" @click="catalogDialogVisible = true">Seleccionar del Catalogo</el-button>
+            <el-button size="small" @click="openMaterialUrlDialog()">Agregar desde liga</el-button>
+            <el-button size="small" @click="addMaterial">Agregar Material</el-button>
+          </div>
         </div>
       </template>
       <div class="table-scroll"><el-table :data="quote.materials" stripe class="materials-table">
         <el-table-column label="No. de parte" min-width="140"><template #default="{ row }"><el-input v-model="row.partNumber" /></template></el-table-column>
         <el-table-column label="Descripcion" min-width="220"><template #default="{ row }"><el-input v-model="row.description" /></template></el-table-column>
         <el-table-column label="Marca" min-width="120"><template #default="{ row }"><el-input v-model="row.brand" /></template></el-table-column>
-        <el-table-column label="Proveedor" min-width="210">
+        <el-table-column label="Proveedor" min-width="280">
           <template #default="{ row }">
-            <el-select v-model="row.providerId" filterable clearable @change="(value) => assignProviderToMaterial(row, value)">
-              <el-option v-for="provider in providerOptions" :key="provider.id" :label="providerLabel(provider)" :value="provider.id" :disabled="provider.active === false" />
-            </el-select>
+            <div class="provider-cell">
+              <el-radio-group v-model="row.__providerMode" size="small" @change="(value) => setProviderMode(row, value)">
+                <el-radio-button label="saved">Lista</el-radio-button>
+                <el-radio-button label="text">Texto</el-radio-button>
+              </el-radio-group>
+              <el-select
+                v-if="row.__providerMode === 'saved'"
+                v-model="row.providerId"
+                filterable
+                clearable
+                @change="(value) => assignProviderToMaterial(row, value)"
+              >
+                <el-option v-for="provider in providerOptions" :key="provider.id" :label="providerLabel(provider)" :value="provider.id" :disabled="provider.active === false" />
+              </el-select>
+              <el-input v-else v-model="row.supplier" placeholder="Proveedor libre" @input="clearMaterialProviderId(row)" />
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="Cant." width="110"><template #default="{ row }"><el-input-number v-model="row.quantity" :min="0" @change="refreshTotals" /></template></el-table-column>
@@ -109,6 +126,50 @@
           @current-change="fetchCatalogProducts"
         />
       </div>
+    </el-dialog>
+
+    <el-dialog v-model="materialUrlDialogVisible" title="Agregar material desde liga" width="780px" @closed="resetMaterialUrlDialog">
+      <el-form label-position="top">
+        <el-form-item label="Liga del producto">
+          <el-input v-model="materialUrlForm.url" placeholder="https://..." />
+        </el-form-item>
+        <el-form-item label="Cantidad">
+          <el-input-number v-model="materialUrlForm.quantity" :min="1" />
+        </el-form-item>
+      </el-form>
+      <div class="table-actions" style="justify-content: flex-end; margin-bottom: 12px">
+        <el-button type="primary" :loading="materialUrlLoading" @click="analyzeMaterialUrl">Analizar con AI</el-button>
+      </div>
+      <el-alert v-if="materialUrlError" :title="materialUrlError" type="error" :closable="false" style="margin-bottom: 12px" />
+      <el-card v-if="materialUrlPreview" shadow="never" class="url-preview-card">
+        <template #header>
+          <div class="page-header" style="margin: 0">
+            <strong>Vista previa</strong>
+            <small class="muted">{{ materialUrlPreview.source?.title || materialUrlPreview.source?.url }}</small>
+          </div>
+        </template>
+        <div class="form-grid">
+          <el-form-item label="No. de parte"><el-input :model-value="materialUrlPreview.material.partNumber" disabled /></el-form-item>
+          <el-form-item label="Marca"><el-input :model-value="materialUrlPreview.material.brand" disabled /></el-form-item>
+          <el-form-item label="Proveedor"><el-input :model-value="materialUrlPreview.material.supplier" disabled /></el-form-item>
+          <el-form-item label="Cantidad"><el-input :model-value="String(materialUrlPreview.material.quantity)" disabled /></el-form-item>
+          <el-form-item class="full" label="Descripcion"><el-input :model-value="materialUrlPreview.material.description" type="textarea" :rows="3" disabled /></el-form-item>
+          <el-form-item label="Costo"><el-input :model-value="`${materialUrlPreview.material.sourceCurrency || quote.commercial.currency} ${money(materialUrlPreview.material.unitCost)}`" disabled /></el-form-item>
+          <el-form-item class="full" label="Notas"><el-input :model-value="materialUrlPreview.material.notes" type="textarea" :rows="2" disabled /></el-form-item>
+        </div>
+        <el-alert
+          v-for="warning in materialUrlPreview.warnings"
+          :key="warning"
+          :title="warning"
+          type="warning"
+          :closable="false"
+          style="margin-top: 8px"
+        />
+      </el-card>
+      <template #footer>
+        <el-button @click="materialUrlDialogVisible = false">Cerrar</el-button>
+        <el-button type="primary" :disabled="!materialUrlPreview" @click="applyMaterialUrlPreview">Aplicar material</el-button>
+      </template>
     </el-dialog>
 
     <el-dialog v-model="emailDialogVisible" title="Enviar liga al cliente" width="680px">
@@ -246,25 +307,38 @@
         </el-table-column>
       </el-table>
     </el-card>
+
+    <div class="floating-save">
+      <el-button type="primary" round :loading="saveState === 'saving'" @click="save">
+        <el-icon v-if="saveState === 'saved'"><Check /></el-icon>
+        <el-icon v-else-if="saveState === 'pending'"><Clock /></el-icon>
+        <el-icon v-else-if="saveState === 'error'"><Warning /></el-icon>
+        <el-icon v-else-if="saveState === 'queued'"><Upload /></el-icon>
+        <el-icon v-else><RefreshRight /></el-icon>
+        <span>{{ saveLabel }}</span>
+      </el-button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowLeft, TopRight } from '@element-plus/icons-vue';
+import { ArrowLeft, Check, Clock, RefreshRight, TopRight, Upload, Warning } from '@element-plus/icons-vue';
 import { useCustomerStore } from '../stores/customerStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useProviderStore } from '../stores/providerStore';
-import { productsApi, quotesApi } from '../services/api';
+import { materialsApi, productsApi, providersApi, quotesApi } from '../services/api';
 import { generateProviderRfqPdf, generateQuotePdf } from '../services/pdfService';
 import { getContactById, getPrimaryContact, normalizeCustomer } from '../utils/customerContacts';
 import { isAutomationDirectProduct, openAutomationDirectProduct } from '../utils/automationDirect';
 import { calculateQuoteTotals, updateMaterialTotals, updateServiceTotals } from '../utils/quoteCalculations';
 import { createEmptyQuote, quoteStatusLabels, quoteStatuses, serviceTypes } from '../utils/quoteDefaults';
+import { getLocalDraft, isLocalQuoteId } from '../utils/offlineQueue';
+import type { MaterialUrlExtractionResult } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -274,6 +348,7 @@ const quotes = useQuoteStore();
 const settings = useSettingsStore();
 const providers = useProviderStore();
 const catalogDialogVisible = ref(false);
+const materialUrlDialogVisible = ref(false);
 const emailDialogVisible = ref(false);
 const rfqDialogVisible = ref(false);
 const catalogSearch = ref('');
@@ -284,7 +359,17 @@ const catalogPageSize = ref(50);
 const catalogTotal = ref(0);
 const familyQuotes = ref<any[]>([]);
 const sendingEmail = ref(false);
+const materialUrlLoading = ref(false);
+const materialUrlPreview = ref<MaterialUrlExtractionResult | null>(null);
+const materialUrlError = ref('');
+const materialUrlTargetIndex = ref<number | null>(null);
+const saveState = ref<'saved' | 'saving' | 'pending' | 'error' | 'queued'>('saved');
+const isHydrating = ref(true);
 const quote = reactive<any>(createEmptyQuote());
+const materialUrlForm = reactive({
+  url: '',
+  quantity: 1
+});
 const emailForm = reactive({
   contactIds: [] as string[],
   subject: '',
@@ -294,12 +379,18 @@ const rfqForm = reactive({
   dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   notes: 'Favor de enviar su mejor tiempo de entrega, vigencia, condiciones comerciales y disponibilidad.'
 });
+let autosaveTimer: number | undefined;
+let catalogSearchTimer: number | undefined;
+let saveQueued = false;
+let suppressAutosave = false;
+const lastSavedSnapshot = ref('');
 
 const filteredProjects = computed(() => projects.projects.filter((project) => !quote.customerId || project.customerId === quote.customerId));
 const currentCustomer = computed(() => normalizeCustomer(customers.customers.find((customer) => customer.id === quote.customerId)));
 const availableContacts = computed(() => currentCustomer.value.contacts || []);
 const selectedRecipient = computed(() => getContactById(currentCustomer.value, quote.recipientContactId));
 const providerOptions = computed(() => providers.providers);
+const hasRemoteQuote = computed(() => Boolean(quote.id) && !isLocalQuoteId(quote.id));
 const rfqMissingRows = computed(() => quote.materials.filter((item: any) => !item.providerId));
 const rfqProviderSummary = computed(() => {
   const grouped = new Map<string, any>();
@@ -320,7 +411,15 @@ const rfqProviderSummary = computed(() => {
   }
   return [...grouped.values()];
 });
-let catalogSearchTimer: number | undefined;
+const saveLabel = computed(() => {
+  if (saveState.value === 'saved') return 'Guardado';
+  if (saveState.value === 'saving') return 'Guardando';
+  if (saveState.value === 'pending') return 'Pendiente';
+  if (saveState.value === 'queued') return 'Sincronizacion pendiente';
+  return 'Reintentar guardado';
+});
+
+const quoteSnapshot = computed(() => JSON.stringify(buildPersistableQuote(quote)));
 
 async function fetchCatalogProducts(page = catalogPage.value) {
   catalogLoading.value = true;
@@ -373,6 +472,45 @@ function convertedProductCost(product: any) {
   return cost;
 }
 
+function hydrateMaterialRow(item: any) {
+  const providerId = item.providerId || matchedProviderId(item.supplier);
+  return {
+    ...item,
+    providerId: providerId || null,
+    __providerMode: providerId ? 'saved' : 'text',
+    __freeSupplierBackup: !providerId ? item.supplier || '' : item.__freeSupplierBackup || ''
+  };
+}
+
+function sanitizeMaterialRow(item: any) {
+  const providerId = item.__providerMode === 'saved' ? item.providerId || null : null;
+  const provider = providers.providers.find((entry) => entry.id === providerId);
+  return {
+    partNumber: item.partNumber || '',
+    description: item.description || '',
+    brand: item.brand || '',
+    supplier: providerId ? provider?.companyName || item.supplier || '' : item.supplier || item.__freeSupplierBackup || '',
+    providerId,
+    quantity: Number(item.quantity || 0),
+    unitCost: Number(item.unitCost || 0),
+    markupPercentage: Number(item.markupPercentage || 0),
+    unitPrice: Number(item.unitPrice || 0),
+    totalPrice: Number(item.totalPrice || 0),
+    notes: item.notes || '',
+    sourceCurrency: item.sourceCurrency,
+    sourceUnitCost: item.sourceUnitCost,
+    exchangeRateApplied: item.exchangeRateApplied
+  };
+}
+
+function buildPersistableQuote(source: any) {
+  const cloned = JSON.parse(JSON.stringify(source || {}));
+  return {
+    ...cloned,
+    materials: (source.materials || []).map((item: any) => sanitizeMaterialRow(item))
+  };
+}
+
 function syncSnapshots() {
   const customer = customers.customers.find((item) => item.id === quote.customerId);
   const normalizedCustomer = normalizeCustomer(customer);
@@ -396,6 +534,22 @@ function providerLabel(provider: any) {
   return provider.active === false ? `${provider.companyName} (Inactivo)` : provider.companyName;
 }
 
+function setProviderMode(material: any, mode: 'saved' | 'text') {
+  material.__providerMode = mode;
+  if (mode === 'saved') {
+    const nextProviderId = material.providerId || matchedProviderId(material.supplier);
+    material.providerId = nextProviderId;
+    if (nextProviderId) {
+      const provider = providers.providers.find((entry) => entry.id === nextProviderId);
+      if (provider) material.supplier = provider.companyName;
+    }
+  } else {
+    material.__freeSupplierBackup = material.__freeSupplierBackup || material.supplier || '';
+    material.providerId = null;
+    material.supplier = material.__freeSupplierBackup || material.supplier || '';
+  }
+}
+
 function refreshTotals() {
   quote.materials = quote.materials.map((item: any) => updateMaterialTotals(item, quote.commercial.materialMarkupPercentage));
   quote.services = quote.services.map(updateServiceTotals);
@@ -408,18 +562,29 @@ function applyMaterialMarkup() {
 }
 
 function addMaterial() {
-  quote.materials.push(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', providerId: null, quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '' }));
+  quote.materials.push(hydrateMaterialRow(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', providerId: null, quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '' })));
 }
 
 function assignProviderToMaterial(material: any, providerId?: string | null) {
   material.providerId = providerId || null;
   const provider = providers.providers.find((entry) => entry.id === providerId);
-  if (provider) material.supplier = provider.companyName;
+  material.__providerMode = provider ? 'saved' : 'text';
+  if (provider) {
+    material.supplier = provider.companyName;
+  } else {
+    material.__freeSupplierBackup = material.__freeSupplierBackup || material.supplier || '';
+  }
+}
+
+function clearMaterialProviderId(material: any) {
+  material.providerId = null;
+  material.__providerMode = 'text';
+  material.__freeSupplierBackup = material.supplier || '';
 }
 
 function addProductToBom(product: any) {
   const unitCost = convertedProductCost(product);
-  quote.materials.push(updateMaterialTotals({
+  quote.materials.push(hydrateMaterialRow(updateMaterialTotals({
     partNumber: product.partNumber,
     description: product.description,
     brand: product.brand,
@@ -436,7 +601,7 @@ function addProductToBom(product: any) {
     sourceCurrency: product.currency,
     sourceUnitCost: product.unitCost,
     exchangeRateApplied: product.currency === 'USD' && quote.commercial.currency === 'MXN' ? quote.commercial.usdToMxnRate : undefined
-  }));
+  })));
   refreshTotals();
 }
 
@@ -446,15 +611,7 @@ function matchedProviderId(supplier: string) {
 }
 
 function normalizeMaterialProviders() {
-  quote.materials = quote.materials.map((item: any) => {
-    const providerId = item.providerId || matchedProviderId(item.supplier);
-    const provider = providers.providers.find((entry) => entry.id === providerId);
-    return {
-      ...item,
-      providerId: providerId || null,
-      supplier: provider?.companyName || item.supplier || ''
-    };
-  });
+  quote.materials = quote.materials.map((item: any) => hydrateMaterialRow(sanitizeMaterialRow(item)));
 }
 
 function removeMaterial(index: number) {
@@ -472,21 +629,182 @@ function removeService(index: number) {
 }
 
 async function loadFamilyQuotes() {
-  if (!quote.id) {
+  if (!quote.id || isLocalQuoteId(quote.id)) {
     familyQuotes.value = [];
     return;
   }
   familyQuotes.value = await quotesApi.family(quote.id);
 }
 
+function updateSaveState(nextState: 'saved' | 'saving' | 'pending' | 'error' | 'queued') {
+  saveState.value = nextState;
+}
+
+async function persistQuote(options: { manual?: boolean } = {}) {
+  if (isHydrating.value) return;
+  if (saveState.value === 'saving') {
+    saveQueued = true;
+    return;
+  }
+
+  window.clearTimeout(autosaveTimer);
+  updateSaveState('saving');
+  const previousId = quote.id;
+
+  try {
+    normalizeMaterialProviders();
+    syncSnapshots();
+    refreshTotals();
+    const saved = await quotes.saveQuote(buildPersistableQuote(quote), { refreshList: false });
+    suppressAutosave = true;
+    Object.assign(quote, saved);
+    normalizeMaterialProviders();
+    refreshTotals();
+    syncSnapshots();
+    await loadFamilyQuotes();
+    lastSavedSnapshot.value = quoteSnapshot.value;
+    updateSaveState(!navigator.onLine || String(saved.id || '').startsWith('local-quote-') ? 'queued' : 'saved');
+    if (saved.id && saved.id !== previousId && route.params.id !== saved.id) {
+      router.replace(`/quotes/${saved.id}/edit`);
+    }
+    if (options.manual) ElMessage.success(navigator.onLine ? 'Cotizacion guardada' : 'Cotizacion guardada localmente');
+  } catch (error: any) {
+    updateSaveState('error');
+    if (options.manual) throw error;
+  } finally {
+    window.setTimeout(() => {
+      suppressAutosave = false;
+    }, 0);
+    if (saveQueued) {
+      saveQueued = false;
+      queueAutosave();
+    }
+  }
+}
+
+function queueAutosave() {
+  if (isHydrating.value || suppressAutosave) return;
+  updateSaveState('pending');
+  window.clearTimeout(autosaveTimer);
+  autosaveTimer = window.setTimeout(() => {
+    void persistQuote();
+  }, 1400);
+}
+
 async function save() {
-  normalizeMaterialProviders();
-  syncSnapshots();
+  try {
+    await persistQuote({ manual: true });
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || 'No fue posible guardar la cotizacion');
+  }
+}
+
+function openMaterialUrlDialog(index: number | null = null) {
+  materialUrlTargetIndex.value = index;
+  materialUrlDialogVisible.value = true;
+}
+
+function resetMaterialUrlDialog() {
+  materialUrlForm.url = '';
+  materialUrlForm.quantity = 1;
+  materialUrlPreview.value = null;
+  materialUrlError.value = '';
+  materialUrlTargetIndex.value = null;
+}
+
+async function analyzeMaterialUrl() {
+  materialUrlError.value = '';
+  materialUrlPreview.value = null;
+  if (!materialUrlForm.url.trim()) {
+    materialUrlError.value = 'Ingresa una liga de producto.';
+    return;
+  }
+  materialUrlLoading.value = true;
+  try {
+    materialUrlPreview.value = await materialsApi.extractFromUrl({
+      url: materialUrlForm.url.trim(),
+      quantity: materialUrlForm.quantity,
+      commercial: quote.commercial
+    });
+  } catch (error: any) {
+    materialUrlError.value = error?.response?.data?.message || 'No fue posible analizar la liga';
+  } finally {
+    materialUrlLoading.value = false;
+  }
+}
+
+function applyMaterialUrlPreview() {
+  if (!materialUrlPreview.value) return;
+  const previewMaterial = structuredClone(materialUrlPreview.value.material);
+  const sourceCurrency = previewMaterial.sourceCurrency || quote.commercial.currency;
+  const convertedCost = quote.commercial.currency === 'MXN' && sourceCurrency === 'USD'
+    ? Math.round(Number(previewMaterial.unitCost || 0) * Number(quote.commercial.usdToMxnRate || 0) * 100) / 100
+    : Number(previewMaterial.unitCost || 0);
+  const nextItem = hydrateMaterialRow(updateMaterialTotals({
+    ...previewMaterial,
+    providerId: previewMaterial.providerId || matchedProviderId(previewMaterial.supplier),
+    unitCost: convertedCost,
+    markupPercentage: quote.commercial.materialMarkupPercentage
+  }, quote.commercial.materialMarkupPercentage));
+  if (quote.commercial.currency === 'MXN' && sourceCurrency === 'USD') {
+    nextItem.notes = [
+      nextItem.notes,
+      `Costo origen: USD ${money(previewMaterial.unitCost)}. Convertido a ${quote.commercial.usdToMxnRate} MXN/USD.`
+    ].filter(Boolean).join(' ').trim();
+    nextItem.exchangeRateApplied = quote.commercial.usdToMxnRate;
+  }
+  if (materialUrlTargetIndex.value !== null && quote.materials[materialUrlTargetIndex.value]) {
+    quote.materials.splice(materialUrlTargetIndex.value, 1, nextItem);
+  } else {
+    quote.materials.push(nextItem);
+  }
   refreshTotals();
-  const saved = await quotes.saveQuote(quote);
-  ElMessage.success('Cotizacion guardada');
-  await loadFamilyQuotes();
-  router.push(`/quotes/${saved.id}/edit`);
+  materialUrlDialogVisible.value = false;
+  ElMessage.success('Material aplicado');
+}
+
+async function ensureProviderDraftsForRfq() {
+  const missingSuppliers = [...new Set<string>(
+    quote.materials
+      .filter((item: any) => !item.providerId && String(item.supplier || '').trim())
+      .map((item: any) => String(item.supplier || '').trim())
+  )];
+
+  if (!missingSuppliers.length) return;
+
+  try {
+    await ElMessageBox.confirm(
+      `Hay ${missingSuppliers.length} proveedores en texto libre. Se crearan registros borrador para continuar.`,
+      'Crear proveedores borrador',
+      { confirmButtonText: 'Crear', cancelButtonText: 'Cancelar', type: 'warning' }
+    );
+  } catch {
+    return;
+  }
+
+  for (const supplierName of missingSuppliers) {
+    let provider = providers.providers.find((entry) => String(entry.companyName || '').trim().toLowerCase() === supplierName.toLowerCase());
+    if (!provider) {
+      provider = await providersApi.create({
+        companyName: supplierName,
+        primaryContactName: '',
+        primaryContactEmail: '',
+        primaryContactPhone: '',
+        notes: 'Proveedor creado automaticamente desde materiales de cotizacion.',
+        active: true
+      });
+      providers.providers.unshift(provider);
+    }
+
+    quote.materials = quote.materials.map((item: any) => {
+      if (item.providerId || String(item.supplier || '').trim().toLowerCase() !== supplierName.toLowerCase()) return item;
+      return hydrateMaterialRow({
+        ...item,
+        providerId: provider.id,
+        supplier: provider.companyName
+      });
+    });
+  }
 }
 
 async function createRevision() {
@@ -559,7 +877,9 @@ function exportPdf() {
   generateQuotePdf(quote, settings.company);
 }
 
-function openRfqDialog() {
+async function openRfqDialog() {
+  normalizeMaterialProviders();
+  await ensureProviderDraftsForRfq();
   normalizeMaterialProviders();
   rfqDialogVisible.value = true;
 }
@@ -592,19 +912,65 @@ function goBack() {
   router.push('/quotes');
 }
 
+async function handleOnlineReconnect() {
+  try {
+    await quotes.syncPendingQuotes();
+    if (!String(quote.id || '').startsWith('local-quote-') && quotes.pendingSyncCount === 0) {
+      updateSaveState('saved');
+    }
+  } catch {
+    updateSaveState('error');
+  }
+}
+
 onMounted(async () => {
   settings.load();
   await Promise.all([customers.fetchCustomers(), projects.fetchProjects(), providers.fetchProviders()]);
-  if (route.params.id) Object.assign(quote, await quotesApi.get(route.params.id as string));
-  else quote.recipientContactId = null;
+  if (route.params.id) {
+    const quoteId = route.params.id as string;
+    if (isLocalQuoteId(quoteId)) {
+      Object.assign(quote, getLocalDraft(quoteId) || createEmptyQuote());
+    } else {
+      try {
+        Object.assign(quote, await quotesApi.get(quoteId));
+      } catch {
+        const fallback = getLocalDraft(quoteId);
+        if (fallback) Object.assign(quote, fallback);
+      }
+    }
+  } else quote.recipientContactId = null;
   normalizeMaterialProviders();
   refreshTotals();
   syncSnapshots();
+  lastSavedSnapshot.value = quoteSnapshot.value;
+  isHydrating.value = false;
   await loadFamilyQuotes();
+  window.addEventListener('offline-quote-synced', handleOfflineQuoteSynced as EventListener);
+  window.addEventListener('online', handleOnlineReconnect);
 });
 
 watch(emailDialogVisible, (visible) => {
   if (visible) prepareEmailDialog();
+});
+
+watch(quoteSnapshot, (nextSnapshot) => {
+  if (isHydrating.value || suppressAutosave) return;
+  if (nextSnapshot !== lastSavedSnapshot.value) queueAutosave();
+});
+
+function handleOfflineQuoteSynced(event: Event) {
+  const detail = (event as CustomEvent).detail || {};
+  if (detail.localId && detail.localId === quote.id && detail.remoteId) {
+    updateSaveState('saved');
+    router.replace(`/quotes/${detail.remoteId}/edit`);
+    ElMessage.success('La cotizacion local se sincronizo con el servidor');
+  }
+}
+
+onBeforeUnmount(() => {
+  window.clearTimeout(autosaveTimer);
+  window.removeEventListener('online', handleOnlineReconnect);
+  window.removeEventListener('offline-quote-synced', handleOfflineQuoteSynced as EventListener);
 });
 </script>
 
@@ -619,6 +985,26 @@ watch(emailDialogVisible, (visible) => {
   margin: 0;
 }
 
+.provider-cell {
+  display: grid;
+  gap: 8px;
+}
+
+.url-preview-card :deep(.el-card__header) {
+  padding-bottom: 12px;
+}
+
+.floating-save {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+}
+
+.floating-save .el-button {
+  box-shadow: 0 12px 28px rgba(32, 51, 74, 0.22);
+}
+
 .materials-table :deep(.el-input-number) {
   width: 100%;
 }
@@ -631,5 +1017,17 @@ watch(emailDialogVisible, (visible) => {
 .materials-table :deep(.el-input-number .el-input__wrapper) {
   padding-left: 11px;
   padding-right: 11px;
+}
+
+@media (max-width: 768px) {
+  .floating-save {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .floating-save .el-button {
+    width: auto;
+    max-width: calc(100vw - 32px);
+  }
 }
 </style>

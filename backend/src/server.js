@@ -10,6 +10,8 @@ import { authRoutes } from './routes/auth.js';
 import { productRoutes } from './routes/products.js';
 import { providerRoutes } from './routes/providers.js';
 import { aiRoutes } from './routes/ai.js';
+import { assistantRoutes } from './routes/assistant.js';
+import { materialRoutes } from './routes/materials.js';
 import { requireAuth } from './utils/auth.js';
 
 const app = Fastify({ logger: true });
@@ -44,6 +46,8 @@ await app.register(serviceRateRoutes);
 await app.register(productRoutes);
 await app.register(providerRoutes);
 await app.register(aiRoutes);
+await app.register(assistantRoutes);
+await app.register(materialRoutes);
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '0.0.0.0';

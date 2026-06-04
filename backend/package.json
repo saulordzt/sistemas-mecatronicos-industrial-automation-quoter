@@ -15,6 +15,7 @@
     "fastify": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^8.0.10",
+    "pdf-parse": "^2.4.5",
     "rethinkdb": "^2.4.2",
     "xlsx": "^0.18.5"
   }

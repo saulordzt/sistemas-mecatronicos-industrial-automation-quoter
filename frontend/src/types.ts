@@ -54,6 +54,17 @@ export interface MaterialItem {
   exchangeRateApplied?: number;
 }
 
+export interface MaterialUrlExtractionResult {
+  material: MaterialItem;
+  matchedProduct?: Product | null;
+  warnings: string[];
+  source?: {
+    url: string;
+    title?: string;
+    contentType?: string;
+  };
+}
+
 export interface ServiceItem {
   serviceType: string;
   description: string;
@@ -206,4 +217,86 @@ export interface QuoteAssistantPreview {
   materials: QuoteAssistantPreviewMaterial[];
   assumptions: string[];
   warnings: string[];
+}
+
+export interface AssistantAttachment {
+  id?: string;
+  sessionId: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  status: 'uploaded' | 'processed' | 'error';
+  summary?: string;
+  extractedText?: string;
+  warnings?: string[];
+  createdAt?: string;
+  processedAt?: string;
+}
+
+export interface AssistantMessage {
+  id?: string;
+  sessionId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt?: string;
+}
+
+export interface AssistantAction {
+  id?: string;
+  sessionId: string;
+  draftQuoteId?: string | null;
+  type: string;
+  summary: string;
+  payload?: Record<string, unknown>;
+  createdAt?: string;
+}
+
+export interface AssistantStructuredContext {
+  reply: string;
+  customer: {
+    companyName: string;
+    contactName: string;
+    email: string;
+    phone: string;
+    address: string;
+    taxId: string;
+    notes: string;
+  };
+  project: {
+    projectName: string;
+    projectType: string;
+    industry: string;
+    location: string;
+    description: string;
+    status: string;
+  };
+  quote: {
+    wizard: QuoteAssistantWizard;
+    scopeOfWork: string;
+    exclusions: string;
+    notes: string;
+    services: ServiceItem[];
+    materials: MaterialItem[];
+    assumptions: string[];
+    warnings: string[];
+  };
+}
+
+export interface AssistantSession {
+  id?: string;
+  title: string;
+  status: 'pending' | 'processing' | 'awaiting_user' | 'draft_ready' | 'error';
+  draftQuoteId?: string | null;
+  customerId?: string | null;
+  projectId?: string | null;
+  warnings?: string[];
+  assumptions?: string[];
+  lastAssistantReply?: string;
+  structuredContext?: AssistantStructuredContext | null;
+  lastProcessedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  messages?: AssistantMessage[];
+  attachments?: AssistantAttachment[];
+  actions?: AssistantAction[];
 }

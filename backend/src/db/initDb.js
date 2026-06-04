@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { r, dbConfig } from './connection.js';
 
-const tables = ['users', 'customers', 'projects', 'quotes', 'products', 'providers', 'service_rates'];
+const tables = ['users', 'customers', 'projects', 'quotes', 'products', 'providers', 'service_rates', 'assistant_sessions', 'assistant_messages', 'assistant_attachments', 'assistant_actions'];
 
 const defaultServiceRates = [
   { serviceType: 'PLC programming', hourlyRate: 1710, currency: 'MXN' },
