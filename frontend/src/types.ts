@@ -65,6 +65,25 @@ export interface MaterialUrlExtractionResult {
   };
 }
 
+export interface QuoteReviewChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface QuoteReviewSuggestion {
+  title: string;
+  category: 'scope' | 'materials' | 'services' | 'pricing' | 'risk' | 'commercial' | 'client' | 'structure';
+  priority: 'high' | 'medium' | 'low';
+  rationale: string;
+  changeHint: string;
+}
+
+export interface QuoteReviewResponse {
+  reply: string;
+  suggestions: QuoteReviewSuggestion[];
+  warnings: string[];
+}
+
 export interface ServiceItem {
   serviceType: string;
   description: string;

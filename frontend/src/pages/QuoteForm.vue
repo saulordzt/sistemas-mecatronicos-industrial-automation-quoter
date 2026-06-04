@@ -8,15 +8,83 @@
         <h1>{{ quote.id ? 'Editar Cotizacion' : 'Nueva Cotizacion' }}</h1>
       </div>
       <div class="table-actions">
-        <el-button v-if="hasRemoteQuote" @click="createRevision">Nueva Revision</el-button>
-        <el-button v-if="hasRemoteQuote" @click="createVariant">Nueva Variante</el-button>
-        <el-button v-if="hasRemoteQuote" @click="copyClientLink">Vista Cliente</el-button>
-        <el-button v-if="hasRemoteQuote" @click="emailDialogVisible = true">Enviar Liga</el-button>
-        <el-button v-if="hasRemoteQuote" @click="openRfqDialog">Solicitudes a Proveedores</el-button>
+        <el-button :disabled="!hasRemoteQuote" @click="createRevision">Nueva Revision</el-button>
+        <el-button :disabled="!hasRemoteQuote" @click="createVariant">Nueva Variante</el-button>
+        <el-button :disabled="!hasRemoteQuote" @click="copyClientLink">Vista Cliente</el-button>
+        <el-button :disabled="!hasRemoteQuote" @click="emailDialogVisible = true">Enviar Liga</el-button>
+        <el-button :disabled="!hasRemoteQuote" @click="openRfqDialog">Solicitudes a Proveedores</el-button>
         <el-button @click="exportPdf">Exportar PDF</el-button>
         <el-button type="primary" @click="save">Guardar Borrador</el-button>
       </div>
     </div>
+
+    <el-card class="section-card ai-review-card">
+      <template #header>
+        <div class="page-header" style="margin: 0">
+          <strong>AI Review Chat</strong>
+          <div class="table-actions">
+            <el-button size="small" text @click="reviewCollapsed = !reviewCollapsed">
+              {{ reviewCollapsed ? 'Mostrar' : 'Ocultar' }}
+            </el-button>
+            <el-button size="small" @click="startQuoteReview" :loading="reviewLoading">Analizar cotizacion</el-button>
+            <el-button size="small" @click="clearReviewChat">Limpiar chat</el-button>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="!reviewCollapsed" class="ai-review-layout">
+        <div class="ai-review-thread">
+          <div v-if="!reviewMessages.length" class="ai-review-empty">
+            Pide al AI que revise alcance, materiales, servicios, pricing y riesgos. Solo te dara sugerencias; los cambios los haces tu manualmente.
+          </div>
+          <div
+            v-for="(entry, index) in reviewMessages"
+            :key="`${entry.role}-${index}-${entry.content.slice(0, 30)}`"
+            class="assistant-message"
+            :class="entry.role"
+          >
+            <small>{{ entry.role === 'assistant' ? 'AI reviewer' : 'Tu' }}</small>
+            <p>{{ entry.content }}</p>
+          </div>
+        </div>
+
+        <div class="ai-review-sidebar">
+          <el-alert
+            v-for="warning in reviewWarnings"
+            :key="warning"
+            :title="warning"
+            type="warning"
+            :closable="false"
+          />
+          <div v-if="reviewSuggestions.length" class="ai-review-suggestions">
+            <div v-for="(suggestion, index) in reviewSuggestions" :key="`${suggestion.title}-${index}`" class="ai-review-suggestion">
+              <div class="page-header" style="margin: 0">
+                <strong>{{ suggestion.title }}</strong>
+                <el-tag :type="suggestion.priority === 'high' ? 'danger' : suggestion.priority === 'medium' ? 'warning' : 'info'" size="small">
+                  {{ reviewPriorityLabel(suggestion.priority) }}
+                </el-tag>
+              </div>
+              <small>{{ reviewCategoryLabel(suggestion.category) }}</small>
+              <p>{{ suggestion.rationale }}</p>
+              <p><strong>Cambio manual:</strong> {{ suggestion.changeHint }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="!reviewCollapsed" class="assistant-composer">
+        <el-input
+          v-model="reviewPrompt"
+          type="textarea"
+          :rows="3"
+          placeholder="Ejemplo: revisa si faltan materiales, si el alcance esta claro y si ves riesgos comerciales."
+          @keydown.ctrl.enter.prevent="sendReviewPrompt"
+        />
+        <div class="table-actions" style="justify-content: flex-end">
+          <el-button type="primary" :loading="reviewLoading" @click="sendReviewPrompt">Enviar al AI</el-button>
+        </div>
+      </div>
+    </el-card>
 
     <el-card class="section-card">
       <el-form label-position="top">
@@ -331,14 +399,14 @@ import { useProjectStore } from '../stores/projectStore';
 import { useQuoteStore } from '../stores/quoteStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useProviderStore } from '../stores/providerStore';
-import { materialsApi, productsApi, providersApi, quotesApi } from '../services/api';
+import { aiApi, materialsApi, productsApi, providersApi, quotesApi } from '../services/api';
 import { generateProviderRfqPdf, generateQuotePdf } from '../services/pdfService';
 import { getContactById, getPrimaryContact, normalizeCustomer } from '../utils/customerContacts';
 import { isAutomationDirectProduct, openAutomationDirectProduct } from '../utils/automationDirect';
 import { calculateQuoteTotals, updateMaterialTotals, updateServiceTotals } from '../utils/quoteCalculations';
 import { createEmptyQuote, quoteStatusLabels, quoteStatuses, serviceTypes } from '../utils/quoteDefaults';
 import { getLocalDraft, isLocalQuoteId } from '../utils/offlineQueue';
-import type { MaterialUrlExtractionResult } from '../types';
+import type { MaterialUrlExtractionResult, QuoteReviewChatMessage, QuoteReviewSuggestion } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -363,6 +431,12 @@ const materialUrlLoading = ref(false);
 const materialUrlPreview = ref<MaterialUrlExtractionResult | null>(null);
 const materialUrlError = ref('');
 const materialUrlTargetIndex = ref<number | null>(null);
+const reviewLoading = ref(false);
+const reviewPrompt = ref('');
+const reviewCollapsed = ref(false);
+const reviewMessages = ref<QuoteReviewChatMessage[]>([]);
+const reviewSuggestions = ref<QuoteReviewSuggestion[]>([]);
+const reviewWarnings = ref<string[]>([]);
 const saveState = ref<'saved' | 'saving' | 'pending' | 'error' | 'queued'>('saved');
 const isHydrating = ref(true);
 const quote = reactive<any>(createEmptyQuote());
@@ -462,6 +536,24 @@ function money(value: number) {
 function formatDate(value?: string) {
   if (!value) return '-';
   return new Date(value).toLocaleString();
+}
+
+function reviewPriorityLabel(value: QuoteReviewSuggestion['priority']) {
+  return value === 'high' ? 'Alta' : value === 'medium' ? 'Media' : 'Baja';
+}
+
+function reviewCategoryLabel(value: QuoteReviewSuggestion['category']) {
+  const labels: Record<QuoteReviewSuggestion['category'], string> = {
+    scope: 'Alcance',
+    materials: 'Materiales',
+    services: 'Servicios',
+    pricing: 'Pricing',
+    risk: 'Riesgo',
+    commercial: 'Comercial',
+    client: 'Cliente',
+    structure: 'Estructura'
+  };
+  return labels[value] || value;
 }
 
 function convertedProductCost(product: any) {
@@ -733,6 +825,49 @@ async function analyzeMaterialUrl() {
   }
 }
 
+async function runQuoteReview(prompt: string) {
+  reviewLoading.value = true;
+  reviewWarnings.value = [];
+  try {
+    const response = await aiApi.reviewQuoteChat({
+      quote: buildPersistableQuote(quote),
+      messages: [
+        ...reviewMessages.value,
+        { role: 'user', content: prompt }
+      ]
+    });
+    reviewMessages.value.push({ role: 'user', content: prompt });
+    reviewMessages.value.push({ role: 'assistant', content: response.reply || 'Sin observaciones por ahora.' });
+    reviewSuggestions.value = response.suggestions || [];
+    reviewWarnings.value = response.warnings || [];
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || 'No fue posible analizar la cotizacion con AI');
+  } finally {
+    reviewLoading.value = false;
+  }
+}
+
+async function startQuoteReview() {
+  await runQuoteReview('Analiza la cotizacion actual completa y dame sugerencias priorizadas. No cambies nada automaticamente.');
+}
+
+async function sendReviewPrompt() {
+  const prompt = reviewPrompt.value.trim();
+  if (!prompt) {
+    ElMessage.warning('Escribe una instruccion para el AI');
+    return;
+  }
+  reviewPrompt.value = '';
+  await runQuoteReview(prompt);
+}
+
+function clearReviewChat() {
+  reviewPrompt.value = '';
+  reviewMessages.value = [];
+  reviewSuggestions.value = [];
+  reviewWarnings.value = [];
+}
+
 function applyMaterialUrlPreview() {
   if (!materialUrlPreview.value) return;
   const previewMaterial = structuredClone(materialUrlPreview.value.material);
@@ -985,6 +1120,62 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.ai-review-card {
+  overflow: hidden;
+}
+
+.ai-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ai-review-thread {
+  display: grid;
+  gap: 12px;
+  min-height: 220px;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.ai-review-empty {
+  border: 1px dashed rgba(107, 122, 144, 0.35);
+  border-radius: 14px;
+  padding: 18px;
+  color: #667085;
+  background: #fbfcfe;
+}
+
+.ai-review-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.ai-review-suggestions {
+  display: grid;
+  gap: 12px;
+}
+
+.ai-review-suggestion {
+  border: 1px solid #d7deea;
+  border-radius: 14px;
+  padding: 14px;
+  background: #f8fbff;
+}
+
+.ai-review-suggestion small {
+  display: block;
+  margin-top: 4px;
+  color: #667085;
+}
+
+.ai-review-suggestion p {
+  margin: 10px 0 0;
+}
+
 .provider-cell {
   display: grid;
   gap: 8px;
@@ -1020,6 +1211,14 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
+  .ai-review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-review-thread {
+    max-height: none;
+  }
+
   .floating-save {
     right: 16px;
     bottom: 16px;

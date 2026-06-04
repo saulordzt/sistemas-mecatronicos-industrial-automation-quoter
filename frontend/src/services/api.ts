@@ -90,7 +90,8 @@ export const publicQuotesApi = {
 };
 
 export const aiApi = {
-  generateQuoteAssistantPreview: (data: unknown) => api.post('/ai/quote-assistant-preview', data).then((res) => res.data)
+  generateQuoteAssistantPreview: (data: unknown) => api.post('/ai/quote-assistant-preview', data).then((res) => res.data),
+  reviewQuoteChat: (data: unknown) => api.post('/ai/quote-review-chat', data).then((res) => res.data)
 };
 
 export const assistantApi = {
