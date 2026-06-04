@@ -2,7 +2,7 @@ import { PDFParse } from 'pdf-parse';
 import { productRepository } from '../repositories/productRepository.js';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
 
 function sanitizeText(value, maxLength = 8000) {
   return String(value || '').trim().slice(0, maxLength);

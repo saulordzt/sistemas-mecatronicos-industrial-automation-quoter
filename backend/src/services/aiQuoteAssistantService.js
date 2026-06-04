@@ -4,7 +4,7 @@ import { productRepository } from '../repositories/productRepository.js';
 import { serviceRateRepository } from '../repositories/serviceRateRepository.js';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
 const SERVICE_TYPES = [
   'Programacion PLC',
   'Programacion HMI',
