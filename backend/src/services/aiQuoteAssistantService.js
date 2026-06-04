@@ -226,7 +226,6 @@ async function callOpenAi(prompt) {
     body: JSON.stringify({
       model: DEFAULT_MODEL,
       response_format: { type: 'json_object' },
-      temperature: 0.2,
       messages: [
         {
           role: 'system',

@@ -1,8 +1,15 @@
 import { PDFParse } from 'pdf-parse';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
 import { productRepository } from '../repositories/productRepository.js';
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PLAYWRIGHT_LIB_DIR = path.resolve(__dirname, '../../runtime/playwright-libs');
+const RENDERED_PAGE_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 
 function sanitizeText(value, maxLength = 8000) {
   return String(value || '').trim().slice(0, maxLength);
@@ -38,6 +45,63 @@ function stripHtml(html) {
 function readMetaTag(html, attribute, key) {
   const pattern = new RegExp(`<meta[^>]+${attribute}=["']${key}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i');
   return sanitizeText(String(html || '').match(pattern)?.[1] || '', 1000);
+}
+
+function shouldUseBrowserFallback({ title, description, extractedText }) {
+  const combinedText = sanitizeText(`${title} ${description} ${extractedText}`, 40000);
+  return combinedText.length < 200;
+}
+
+async function fetchRenderedHtmlContent(parsedUrl) {
+  const browser = await chromium.launch({
+    headless: true,
+    env: {
+      ...process.env,
+      LD_LIBRARY_PATH: [PLAYWRIGHT_LIB_DIR, process.env.LD_LIBRARY_PATH].filter(Boolean).join(':')
+    }
+  });
+
+  try {
+    const page = await browser.newPage({
+      userAgent: RENDERED_PAGE_USER_AGENT,
+      locale: 'en-US',
+      viewport: { width: 1440, height: 1200 }
+    });
+
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    });
+
+    const response = await page.goto(parsedUrl.href, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000
+    });
+
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+
+    const rendered = await page.evaluate(() => {
+      const meta = (name, attribute = 'name') =>
+        document.querySelector(`meta[${attribute}="${name}"]`)?.getAttribute('content') || '';
+
+      return {
+        title: document.title || meta('og:title', 'property') || '',
+        description: meta('description') || meta('og:description', 'property') || '',
+        extractedText: document.body?.innerText || ''
+      };
+    });
+
+    return {
+      url: new URL(page.url()),
+      contentType: sanitizeText(response?.headers()?.['content-type'] || 'text/html', 120).toLowerCase(),
+      title: sanitizeText(rendered.title, 500),
+      description: sanitizeText(rendered.description, 1000),
+      extractedText: sanitizeText(rendered.extractedText, 32000),
+      sourceLabel: 'html-rendered'
+    };
+  } finally {
+    await browser.close().catch(() => {});
+  }
 }
 
 function buildSearchTerms(url, sourceText) {
@@ -87,7 +151,6 @@ async function callOpenAiJson(messages) {
     body: JSON.stringify({
       model: DEFAULT_MODEL,
       response_format: { type: 'json_object' },
-      temperature: 0.1,
       messages
     }),
     signal: AbortSignal.timeout(45000)
@@ -168,19 +231,28 @@ async function fetchUrlContent(rawUrl) {
   }
 
   const html = await response.text();
-  const title = sanitizeText(String(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || ''), 500);
-  const description = readMetaTag(html, 'name', 'description') || readMetaTag(html, 'property', 'og:description');
-  const ogTitle = readMetaTag(html, 'property', 'og:title');
-  const extractedText = stripHtml(html);
-
-  return {
+  const htmlResult = {
     url: finalUrl,
     contentType,
-    title: ogTitle || title,
-    description,
-    extractedText,
+    title: readMetaTag(html, 'property', 'og:title') || sanitizeText(String(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || ''), 500),
+    description: readMetaTag(html, 'name', 'description') || readMetaTag(html, 'property', 'og:description'),
+    extractedText: stripHtml(html),
     sourceLabel: 'html'
   };
+
+  if (shouldUseBrowserFallback(htmlResult)) {
+    try {
+      const renderedResult = await fetchRenderedHtmlContent(finalUrl);
+      if (!shouldUseBrowserFallback(renderedResult)) {
+        return renderedResult;
+      }
+      return renderedResult.extractedText.length > htmlResult.extractedText.length ? renderedResult : htmlResult;
+    } catch {
+      return htmlResult;
+    }
+  }
+
+  return htmlResult;
 }
 
 function domainHints(hostname) {

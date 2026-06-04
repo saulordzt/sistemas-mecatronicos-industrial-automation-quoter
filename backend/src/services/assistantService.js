@@ -157,7 +157,6 @@ async function callOpenAiJson(messages) {
     body: JSON.stringify({
       model: DEFAULT_MODEL,
       response_format: { type: 'json_object' },
-      temperature: 0.2,
       messages
     }),
     signal: AbortSignal.timeout(45000)
