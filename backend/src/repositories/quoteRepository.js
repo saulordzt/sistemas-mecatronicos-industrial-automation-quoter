@@ -32,6 +32,7 @@ export const quoteRepository = {
     return base.create({
       ...data,
       id,
+      outputMode: data.outputMode || 'separated',
       familyId: data.familyId || id,
       rootQuoteId: data.rootQuoteId || id,
       revisionNumber: Number(data.revisionNumber || 1),

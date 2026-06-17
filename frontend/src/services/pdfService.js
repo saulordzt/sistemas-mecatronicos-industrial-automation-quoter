@@ -59,6 +59,10 @@ function money(value, currency) {
   })}`;
 }
 
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
 function safe(value, fallback = '') {
   return value || fallback;
 }
@@ -103,11 +107,20 @@ function tableTheme() {
   };
 }
 
+function isUnifiedOutput(quote) {
+  return quote?.outputMode === 'unified';
+}
+
+function categoryTotalWithTax(value, quote) {
+  return roundMoney(Number(value || 0) * (1 + Number(quote.commercial?.taxPercentage || 0) / 100));
+}
+
 export async function generateQuotePdf(quote, company = {}) {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   await registerFonts(doc);
   const currency = quote.commercial?.currency || 'USD';
   const recipientContact = resolveRecipientContact(quote);
+  const unifiedOutput = isUnifiedOutput(quote);
 
   doc.setFillColor(...brand.blue);
   doc.rect(0, 0, 216, 34, 'F');
@@ -173,43 +186,74 @@ export async function generateQuotePdf(quote, company = {}) {
     y = 18;
   }
 
-  addSectionTitle(doc, 'Lista de Materiales', y);
-  autoTable(doc, {
-    startY: y + 6,
-    head: [['Parte #', 'Descripcion', 'Marca', 'Cant.', 'Precio Unitario', 'Total']],
-    body: (quote.materials || []).map((item) => [
-      safe(item.partNumber),
-      safe(item.description),
-      safe(item.brand),
-      item.quantity || 0,
-      money(item.unitPrice, currency),
-      money(item.totalPrice, currency)
-    ]),
-    ...tableTheme()
-  });
+  if (!unifiedOutput) {
+    addSectionTitle(doc, 'Lista de Materiales', y);
+    autoTable(doc, {
+      startY: y + 6,
+      head: [['Parte #', 'Descripcion', 'Marca', 'Cant.', 'Precio Unitario', 'Total']],
+      body: (quote.materials || []).map((item) => [
+        safe(item.partNumber),
+        safe(item.description),
+        safe(item.brand),
+        item.quantity || 0,
+        money(item.unitPrice, currency),
+        money(item.totalPrice, currency)
+      ]),
+      ...tableTheme()
+    });
 
-  y = doc.lastAutoTable.finalY + 9;
-  addSectionTitle(doc, 'Mano de Obra y Servicios', y);
-  autoTable(doc, {
-    startY: y + 6,
-    head: [['Servicio', 'Descripcion', 'Horas', 'Tarifa', 'Total']],
-    body: (quote.services || []).map((item) => [
-      safe(item.serviceType),
-      safe(item.description),
-      item.hours || 0,
-      money(item.hourlyRate, currency),
-      money(item.total, currency)
-    ]),
-    ...tableTheme()
-  });
+    y = doc.lastAutoTable.finalY + 9;
+    autoTable(doc, {
+      startY: y,
+      theme: 'grid',
+      ...tableTheme(),
+      body: [
+        [
+          { content: 'Total materiales con IVA', styles: { fontStyle: 'bold', fillColor: brand.pale } },
+          { content: money(categoryTotalWithTax(quote.totals?.materialsSubtotal, quote), currency), styles: { fontStyle: 'bold', fillColor: brand.pale, halign: 'right' } }
+        ]
+      ],
+      columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 92, halign: 'right' } }
+    });
 
-  y = doc.lastAutoTable.finalY + 9;
+    y = doc.lastAutoTable.finalY + 9;
+    addSectionTitle(doc, 'Mano de Obra y Servicios', y);
+    autoTable(doc, {
+      startY: y + 6,
+      head: [['Servicio', 'Descripcion', 'Horas', 'Tarifa', 'Total']],
+      body: (quote.services || []).map((item) => [
+        safe(item.serviceType),
+        safe(item.description),
+        item.hours || 0,
+        money(item.hourlyRate, currency),
+        money(item.total, currency)
+      ]),
+      ...tableTheme()
+    });
+
+    y = doc.lastAutoTable.finalY + 9;
+    autoTable(doc, {
+      startY: y,
+      theme: 'grid',
+      ...tableTheme(),
+      body: [
+        [
+          { content: 'Total mano de obra con IVA', styles: { fontStyle: 'bold', fillColor: brand.pale } },
+          { content: money(categoryTotalWithTax(quote.totals?.laborSubtotal, quote), currency), styles: { fontStyle: 'bold', fillColor: brand.pale, halign: 'right' } }
+        ]
+      ],
+      columnStyles: { 0: { cellWidth: 92 }, 1: { cellWidth: 92, halign: 'right' } }
+    });
+
+    y = doc.lastAutoTable.finalY + 9;
+  }
+
   if (y > 220) {
     doc.addPage();
     y = 18;
   }
 
-  addSectionTitle(doc, 'Resumen Comercial', y);
+  addSectionTitle(doc, unifiedOutput ? 'Precio del Proyecto' : 'Resumen Comercial', y);
   autoTable(doc, {
     startY: y + 6,
     theme: 'grid',

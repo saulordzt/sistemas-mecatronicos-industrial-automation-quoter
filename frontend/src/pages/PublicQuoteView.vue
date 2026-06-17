@@ -25,7 +25,7 @@
           <p>{{ quote?.projectSnapshot?.location || '-' }}</p>
         </el-card>
         <el-card shadow="never" class="public-total-card">
-          <template #header>Total</template>
+          <template #header>{{ isUnifiedOutput ? 'Precio total del proyecto' : 'Total' }}</template>
           <strong>{{ quote?.commercial?.currency }} {{ money(quote?.totals?.finalTotal) }}</strong>
           <p>Vigencia {{ quote?.commercial?.quoteValidityDays || 0 }} dias</p>
         </el-card>
@@ -36,7 +36,7 @@
         <p class="notes-text">{{ quote?.scopeOfWork || 'Alcance por definir.' }}</p>
       </el-card>
 
-      <el-card class="section-card" shadow="never">
+      <el-card v-if="!isUnifiedOutput" class="section-card" shadow="never">
         <template #header>Lista de Materiales</template>
         <div class="table-scroll">
           <el-table :data="quote?.materials || []" stripe>
@@ -48,9 +48,13 @@
           </el-table-column>
           </el-table>
         </div>
+        <div class="public-category-total">
+          <span>Total materiales con IVA</span>
+          <strong>{{ quote?.commercial?.currency }} {{ money(materialsTotalWithTax) }}</strong>
+        </div>
       </el-card>
 
-      <el-card class="section-card" shadow="never">
+      <el-card v-if="!isUnifiedOutput" class="section-card" shadow="never">
         <template #header>Mano de Obra y Servicios</template>
         <div class="table-scroll">
           <el-table :data="quote?.services || []" stripe>
@@ -61,6 +65,10 @@
             <template #default="{ row }">{{ quote?.commercial?.currency }} {{ money(row.total) }}</template>
           </el-table-column>
           </el-table>
+        </div>
+        <div class="public-category-total">
+          <span>Total mano de obra con IVA</span>
+          <strong>{{ quote?.commercial?.currency }} {{ money(laborTotalWithTax) }}</strong>
         </div>
       </el-card>
 
@@ -92,6 +100,14 @@ const settings = useSettingsStore();
 const quote = ref<any>(null);
 const loading = ref(false);
 const recipientContact = computed(() => getContactById(quote.value?.customerSnapshot, quote.value?.recipientContactId));
+const isUnifiedOutput = computed(() => quote.value?.outputMode === 'unified');
+const taxMultiplier = computed(() => 1 + Number(quote.value?.commercial?.taxPercentage || 0) / 100);
+const materialsTotalWithTax = computed(() => roundMoney(Number(quote.value?.totals?.materialsSubtotal || 0) * taxMultiplier.value));
+const laborTotalWithTax = computed(() => roundMoney(Number(quote.value?.totals?.laborSubtotal || 0) * taxMultiplier.value));
+
+function roundMoney(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
 
 function money(value: number) {
   return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -121,3 +137,15 @@ onMounted(async () => {
   }
 });
 </script>
+
+<style scoped>
+.public-category-total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e7ed;
+  color: #303133;
+}
+</style>

@@ -250,6 +250,7 @@ function emptyQuoteDraft() {
   return {
     quoteNumber: `Q-AI-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${Date.now().toString().slice(-4)}`,
     status: 'Draft',
+    outputMode: 'separated',
     revisionNumber: 1,
     variantSequence: 1,
     variantName: 'Base',

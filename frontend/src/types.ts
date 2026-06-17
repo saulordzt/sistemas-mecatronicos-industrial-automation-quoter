@@ -1,5 +1,6 @@
 export type Currency = 'MXN' | 'USD';
 export type QuoteStatus = 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Cancelled';
+export type QuoteOutputMode = 'separated' | 'unified';
 
 export interface CustomerContact {
   id?: string;
@@ -121,6 +122,7 @@ export interface Quote {
   id?: string;
   quoteNumber: string;
   status: QuoteStatus;
+  outputMode?: QuoteOutputMode;
   familyId?: string;
   rootQuoteId?: string;
   sourceQuoteId?: string | null;

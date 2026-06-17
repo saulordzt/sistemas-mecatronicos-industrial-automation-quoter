@@ -131,10 +131,68 @@
         </div>
       </template>
       <div class="table-scroll"><el-table :data="quote.materials" stripe class="materials-table">
+        <el-table-column label="" width="114" fixed="left">
+          <template #default="{ $index }">
+            <div
+              class="reorder-cell"
+              :class="{ 'is-drag-target': isDragTarget('materials', $index) }"
+              @dragenter.prevent="setDragTarget('materials', $index)"
+              @dragover.prevent="setDragTarget('materials', $index)"
+              @drop.prevent="dropDraggedRow('materials', $index)"
+            >
+              <span
+                class="drag-handle"
+                draggable="true"
+                title="Arrastrar material"
+                aria-label="Arrastrar material"
+                @dragstart="startRowDrag('materials', $index, $event)"
+                @dragend="endRowDrag"
+              >
+                <el-icon><Rank /></el-icon>
+              </span>
+              <el-button
+                size="small"
+                circle
+                :disabled="$index === 0"
+                title="Subir material"
+                aria-label="Subir material"
+                @click="moveMaterial($index, -1)"
+              >
+                <el-icon><ArrowUp /></el-icon>
+              </el-button>
+              <el-button
+                size="small"
+                circle
+                :disabled="$index === quote.materials.length - 1"
+                title="Bajar material"
+                aria-label="Bajar material"
+                @click="moveMaterial($index, 1)"
+              >
+                <el-icon><ArrowDown /></el-icon>
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="No. de parte" min-width="140"><template #default="{ row }"><el-input v-model="row.partNumber" /></template></el-table-column>
-        <el-table-column label="Descripcion" min-width="220"><template #default="{ row }"><el-input v-model="row.description" /></template></el-table-column>
+        <el-table-column label="Descripcion" min-width="380">
+          <template #default="{ row, $index }">
+            <div class="material-description-cell">
+              <el-input
+                v-model="row.description"
+                class="material-nav-textarea"
+                :data-material-row="$index"
+                data-material-field="description"
+                type="textarea"
+                :rows="3"
+                placeholder="Descripcion para presentar en la cotizacion"
+                @keydown="handleMaterialFieldKeydown($event, $index, 'description')"
+              />
+              <el-button size="small" text @click="row.description = ''">Limpiar</el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="Marca" min-width="120"><template #default="{ row }"><el-input v-model="row.brand" /></template></el-table-column>
-        <el-table-column label="Proveedor" min-width="280">
+        <el-table-column label="Proveedor" min-width="200">
           <template #default="{ row }">
             <div class="provider-cell">
               <el-radio-group v-model="row.__providerMode" size="small" @change="(value) => setProviderMode(row, value)">
@@ -155,10 +213,52 @@
           </template>
         </el-table-column>
         <el-table-column label="Cant." width="110"><template #default="{ row }"><el-input-number v-model="row.quantity" :min="0" @change="refreshTotals" /></template></el-table-column>
-        <el-table-column label="Costo unitario" width="140"><template #default="{ row }"><el-input-number v-model="row.unitCost" :min="0" :precision="2" @change="refreshTotals" /></template></el-table-column>
-        <el-table-column label="Margen %" width="130"><template #default="{ row }"><el-input-number v-model="row.markupPercentage" :min="0" @change="refreshTotals" /></template></el-table-column>
+        <el-table-column label="Costo unitario" width="170">
+          <template #default="{ row, $index }">
+            <div class="unit-cost-cell">
+              <el-input-number
+                v-model="row.unitCost"
+                class="material-nav-input"
+                :data-material-row="$index"
+                data-material-field="unitCost"
+                :min="0"
+                :precision="2"
+                @keydown.capture="handleMaterialFieldKeydown($event, $index, 'unitCost')"
+                @change="refreshTotals"
+              />
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :disabled="!canConvertMaterialCostToMxn(row)"
+                @click="convertMaterialCostToMxn(row)"
+              >
+                Convertir a MXN
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="Margen %" width="130">
+          <template #default="{ row, $index }">
+            <el-input-number
+              v-model="row.markupPercentage"
+              class="material-nav-input"
+              :data-material-row="$index"
+              data-material-field="markupPercentage"
+              :min="0"
+              @keydown.capture="handleMaterialFieldKeydown($event, $index, 'markupPercentage')"
+              @change="refreshTotals"
+            />
+          </template>
+        </el-table-column>
         <el-table-column label="Total" width="130" align="right"><template #default="{ row }">{{ money(row.totalPrice) }}</template></el-table-column>
-        <el-table-column label="" width="90"><template #default="{ $index }"><el-button size="small" type="danger" @click="removeMaterial($index)">Eliminar</el-button></template></el-table-column>
+        <el-table-column label="" width="70">
+          <template #default="{ $index }">
+            <el-button size="small" type="danger" circle title="Eliminar material" aria-label="Eliminar material" @click="removeMaterial($index)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table></div>
     </el-card>
 
@@ -301,6 +401,48 @@
         </div>
       </template>
       <div class="table-scroll"><el-table :data="quote.services" stripe>
+        <el-table-column label="" width="114" fixed="left">
+          <template #default="{ $index }">
+            <div
+              class="reorder-cell"
+              :class="{ 'is-drag-target': isDragTarget('services', $index) }"
+              @dragenter.prevent="setDragTarget('services', $index)"
+              @dragover.prevent="setDragTarget('services', $index)"
+              @drop.prevent="dropDraggedRow('services', $index)"
+            >
+              <span
+                class="drag-handle"
+                draggable="true"
+                title="Arrastrar servicio"
+                aria-label="Arrastrar servicio"
+                @dragstart="startRowDrag('services', $index, $event)"
+                @dragend="endRowDrag"
+              >
+                <el-icon><Rank /></el-icon>
+              </span>
+              <el-button
+                size="small"
+                circle
+                :disabled="$index === 0"
+                title="Subir servicio"
+                aria-label="Subir servicio"
+                @click="moveService($index, -1)"
+              >
+                <el-icon><ArrowUp /></el-icon>
+              </el-button>
+              <el-button
+                size="small"
+                circle
+                :disabled="$index === quote.services.length - 1"
+                title="Bajar servicio"
+                aria-label="Bajar servicio"
+                @click="moveService($index, 1)"
+              >
+                <el-icon><ArrowDown /></el-icon>
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="Tipo" min-width="180">
           <template #default="{ row }"><el-select v-model="row.serviceType"><el-option v-for="type in serviceTypes" :key="type" :label="type" :value="type" /></el-select></template>
         </el-table-column>
@@ -308,13 +450,25 @@
         <el-table-column label="Horas" width="120"><template #default="{ row }"><el-input-number v-model="row.hours" :min="0" :precision="1" @change="refreshTotals" /></template></el-table-column>
         <el-table-column label="Tarifa por hora" width="150"><template #default="{ row }"><el-input-number v-model="row.hourlyRate" :min="0" :precision="2" @change="refreshTotals" /></template></el-table-column>
         <el-table-column label="Total" width="130" align="right"><template #default="{ row }">{{ money(row.total) }}</template></el-table-column>
-        <el-table-column label="" width="90"><template #default="{ $index }"><el-button size="small" type="danger" @click="removeService($index)">Eliminar</el-button></template></el-table-column>
+        <el-table-column label="" width="70">
+          <template #default="{ $index }">
+            <el-button size="small" type="danger" circle title="Eliminar servicio" aria-label="Eliminar servicio" @click="removeService($index)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </template>
+        </el-table-column>
       </el-table></div>
     </el-card>
 
     <el-card class="section-card">
       <template #header>Configuracion Comercial</template>
       <div class="form-grid">
+        <el-form-item label="Modo de salida">
+          <el-select v-model="quote.outputMode">
+            <el-option label="Separado: materiales y servicios" value="separated" />
+            <el-option label="Unificado: costo total del proyecto" value="unified" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="Margen materiales %"><el-input-number v-model="quote.commercial.materialMarkupPercentage" :min="0" @change="applyMaterialMarkup" /></el-form-item>
         <el-form-item label="Margen mano de obra %"><el-input-number v-model="quote.commercial.laborMarkupPercentage" :min="0" @change="refreshTotals" /></el-form-item>
         <el-form-item label="Contingencia %"><el-input-number v-model="quote.commercial.contingencyPercentage" :min="0" @change="refreshTotals" /></el-form-item>
@@ -390,10 +544,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowLeft, Check, Clock, RefreshRight, TopRight, Upload, Warning } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowLeft, ArrowUp, Check, Clock, Delete, Rank, RefreshRight, TopRight, Upload, Warning } from '@element-plus/icons-vue';
 import { useCustomerStore } from '../stores/customerStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useQuoteStore } from '../stores/quoteStore';
@@ -407,6 +561,8 @@ import { calculateQuoteTotals, updateMaterialTotals, updateServiceTotals } from 
 import { createEmptyQuote, quoteStatusLabels, quoteStatuses, serviceTypes } from '../utils/quoteDefaults';
 import { getLocalDraft, isLocalQuoteId } from '../utils/offlineQueue';
 import type { MaterialUrlExtractionResult, QuoteReviewChatMessage, QuoteReviewSuggestion } from '../types';
+
+type ReorderList = 'materials' | 'services';
 
 const route = useRoute();
 const router = useRouter();
@@ -437,6 +593,8 @@ const reviewCollapsed = ref(false);
 const reviewMessages = ref<QuoteReviewChatMessage[]>([]);
 const reviewSuggestions = ref<QuoteReviewSuggestion[]>([]);
 const reviewWarnings = ref<string[]>([]);
+const draggedRow = ref<{ list: ReorderList; index: number } | null>(null);
+const dragTarget = ref<{ list: ReorderList; index: number } | null>(null);
 const saveState = ref<'saved' | 'saving' | 'pending' | 'error' | 'queued'>('saved');
 const isHydrating = ref(true);
 const quote = reactive<any>(createEmptyQuote());
@@ -599,6 +757,7 @@ function buildPersistableQuote(source: any) {
   const cloned = JSON.parse(JSON.stringify(source || {}));
   return {
     ...cloned,
+    outputMode: cloned.outputMode === 'unified' ? 'unified' : 'separated',
     materials: (source.materials || []).map((item: any) => sanitizeMaterialRow(item))
   };
 }
@@ -697,6 +856,25 @@ function addProductToBom(product: any) {
   refreshTotals();
 }
 
+function canConvertMaterialCostToMxn(material: any) {
+  return Number(material.unitCost || 0) > 0 && Number(quote.commercial.usdToMxnRate || 0) > 0;
+}
+
+function convertMaterialCostToMxn(material: any) {
+  const sourceUnitCost = Number(material.unitCost || 0);
+  const exchangeRate = Number(quote.commercial.usdToMxnRate || 0);
+  if (sourceUnitCost <= 0 || exchangeRate <= 0) {
+    ElMessage.warning('Captura un costo y un tipo de cambio USD a MXN valido.');
+    return;
+  }
+  material.unitCost = Math.round(sourceUnitCost * exchangeRate * 100) / 100;
+  material.sourceCurrency = 'USD';
+  material.sourceUnitCost = sourceUnitCost;
+  material.exchangeRateApplied = exchangeRate;
+  refreshTotals();
+  ElMessage.success(`Convertido de USD ${money(sourceUnitCost)} a MXN ${money(material.unitCost)}.`);
+}
+
 function matchedProviderId(supplier: string) {
   const provider = providers.providers.find((entry) => String(entry.companyName || '').trim().toLowerCase() === String(supplier || '').trim().toLowerCase());
   return provider?.id || null;
@@ -711,6 +889,74 @@ function removeMaterial(index: number) {
   refreshTotals();
 }
 
+function moveArrayItem<T>(items: T[], index: number, direction: -1 | 1) {
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= items.length) return;
+  const [item] = items.splice(index, 1);
+  items.splice(nextIndex, 0, item);
+}
+
+function moveArrayItemTo<T>(items: T[], fromIndex: number, toIndex: number) {
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= items.length || toIndex >= items.length || fromIndex === toIndex) return;
+  const [item] = items.splice(fromIndex, 1);
+  items.splice(toIndex, 0, item);
+}
+
+function reorderRows(list: ReorderList) {
+  return list === 'materials' ? quote.materials : quote.services;
+}
+
+function startRowDrag(list: ReorderList, index: number, event: DragEvent) {
+  draggedRow.value = { list, index };
+  dragTarget.value = { list, index };
+  event.dataTransfer?.setData('text/plain', `${list}:${index}`);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+}
+
+function setDragTarget(list: ReorderList, index: number) {
+  if (draggedRow.value?.list !== list) return;
+  dragTarget.value = { list, index };
+}
+
+function isDragTarget(list: ReorderList, index: number) {
+  return draggedRow.value?.list === list && dragTarget.value?.list === list && dragTarget.value.index === index;
+}
+
+function dropDraggedRow(list: ReorderList, targetIndex: number) {
+  const state = draggedRow.value;
+  if (!state || state.list !== list) return;
+  moveArrayItemTo(reorderRows(list), state.index, targetIndex);
+  draggedRow.value = null;
+  dragTarget.value = null;
+}
+
+function endRowDrag() {
+  draggedRow.value = null;
+  dragTarget.value = null;
+}
+
+function moveMaterial(index: number, direction: -1 | 1) {
+  moveArrayItem(quote.materials, index, direction);
+}
+
+async function focusMaterialField(rowIndex: number, field: 'description' | 'unitCost' | 'markupPercentage') {
+  if (rowIndex < 0 || rowIndex >= quote.materials.length) return;
+  await nextTick();
+  const fieldElement = document.querySelector<HTMLElement>(
+    `[data-material-row="${rowIndex}"][data-material-field="${field}"]`
+  );
+  const input = fieldElement?.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea') || null;
+  input?.focus();
+  input?.select();
+}
+
+function handleMaterialFieldKeydown(event: KeyboardEvent, rowIndex: number, field: 'description' | 'unitCost' | 'markupPercentage') {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  event.stopPropagation();
+  void focusMaterialField(rowIndex + (event.key === 'ArrowDown' ? 1 : -1), field);
+}
+
 function addService() {
   quote.services.push(updateServiceTotals({ serviceType: 'PLC programming', description: '', hours: 1, hourlyRate: 1710, total: 0, notes: '' }));
 }
@@ -718,6 +964,10 @@ function addService() {
 function removeService(index: number) {
   quote.services.splice(index, 1);
   refreshTotals();
+}
+
+function moveService(index: number, direction: -1 | 1) {
+  moveArrayItem(quote.services, index, direction);
 }
 
 async function loadFamilyQuotes() {
@@ -1074,6 +1324,7 @@ onMounted(async () => {
       }
     }
   } else quote.recipientContactId = null;
+  quote.outputMode = quote.outputMode === 'unified' ? 'unified' : 'separated';
   normalizeMaterialProviders();
   refreshTotals();
   syncSnapshots();
@@ -1179,6 +1430,59 @@ onBeforeUnmount(() => {
 .provider-cell {
   display: grid;
   gap: 8px;
+}
+
+.reorder-cell {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  border-radius: 10px;
+  padding: 2px;
+  transition: background-color 0.15s ease;
+}
+
+.reorder-cell.is-drag-target {
+  background: rgba(46, 117, 182, 0.12);
+}
+
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d7deea;
+  border-radius: 999px;
+  color: #5f6f86;
+  cursor: grab;
+  background: #fff;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.reorder-cell .el-button + .el-button {
+  margin-left: 0;
+}
+
+.material-description-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.material-description-cell .el-button {
+  justify-self: end;
+}
+
+.unit-cost-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.unit-cost-cell .el-button {
+  justify-self: stretch;
 }
 
 .url-preview-card :deep(.el-card__header) {

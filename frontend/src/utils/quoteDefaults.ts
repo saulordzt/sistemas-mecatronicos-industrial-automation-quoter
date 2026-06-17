@@ -26,6 +26,7 @@ export function createEmptyQuote(): Quote {
   return {
     quoteNumber: `Q-${new Date().toISOString().slice(0, 10).split('-').join('')}-${Date.now().toString().slice(-4)}`,
     status: 'Draft',
+    outputMode: 'separated',
     revisionNumber: 1,
     variantSequence: 1,
     variantName: 'Base',
