@@ -883,12 +883,25 @@ function firstImageFile(files: FileList | File[] | null | undefined) {
   return Array.from(files || []).find((file) => file.type.startsWith('image/')) || null;
 }
 
-function firstClipboardImageUrl(event: ClipboardEvent) {
-  const text = event.clipboardData?.getData('text/plain')?.trim();
-  if (!text) return '';
+function normalizeImageUrl(text = '') {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
   try {
-    const parsed = new URL(text);
+    const parsed = new URL(trimmed);
     return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch (_error) {
+    return '';
+  }
+}
+
+function firstClipboardImageUrl(event: ClipboardEvent) {
+  return normalizeImageUrl(event.clipboardData?.getData('text/plain') || '');
+}
+
+async function readClipboardImageUrl() {
+  if (!navigator.clipboard?.readText) return '';
+  try {
+    return normalizeImageUrl(await navigator.clipboard.readText());
   } catch (_error) {
     return '';
   }
@@ -935,16 +948,22 @@ async function uploadMaterialImageFile(file: File | null, rowIndex: number) {
 }
 
 async function uploadMaterialImageUrl(imageUrl: string, rowIndex: number) {
-  const trimmedUrl = imageUrl.trim();
-  if (!trimmedUrl) {
+  const normalizedUrl = normalizeImageUrl(imageUrl);
+  if (!normalizedUrl) {
     ElMessage.warning('Pega una liga de imagen valida.');
     return;
   }
 
-  await applyUploadedMaterialImage(rowIndex, (quoteId) => quotesApi.uploadMaterialImageFromUrl(quoteId, trimmedUrl), trimmedUrl);
+  await applyUploadedMaterialImage(rowIndex, (quoteId) => quotesApi.uploadMaterialImageFromUrl(quoteId, normalizedUrl), normalizedUrl);
 }
 
 async function promptMaterialImageUrl(rowIndex: number) {
+  const clipboardUrl = await readClipboardImageUrl();
+  if (clipboardUrl) {
+    await uploadMaterialImageUrl(clipboardUrl, rowIndex);
+    return;
+  }
+
   try {
     const result = await ElMessageBox.prompt('Pega la liga directa de la imagen.', 'Agregar imagen desde liga', {
       confirmButtonText: 'Guardar imagen',
