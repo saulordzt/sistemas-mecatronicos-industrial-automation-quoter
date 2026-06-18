@@ -123,14 +123,9 @@
       <template #header>
         <div class="page-header" style="margin: 0">
           <strong>Lista de Materiales</strong>
-          <div class="table-actions">
-            <el-button size="small" @click="catalogDialogVisible = true">Seleccionar del Catalogo</el-button>
-            <el-button size="small" @click="openMaterialUrlDialog()">Agregar desde liga</el-button>
-            <el-button size="small" @click="addMaterial">Agregar Material</el-button>
-          </div>
         </div>
       </template>
-      <div class="table-scroll"><el-table :data="quote.materials" stripe class="materials-table">
+      <div class="table-scroll"><el-table :data="quote.materials" stripe class="materials-table quote-line-items-table">
         <el-table-column label="" width="114" fixed="left">
           <template #default="{ $index }">
             <div
@@ -188,6 +183,34 @@
                 @keydown="handleMaterialFieldKeydown($event, $index, 'description')"
               />
               <el-button size="small" text @click="row.description = ''">Limpiar</el-button>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="Imagen" width="150">
+          <template #default="{ row, $index }">
+            <div
+              class="material-image-cell"
+              tabindex="0"
+              @paste="handleMaterialImagePaste($event, $index)"
+              @dragover.prevent
+              @drop.prevent="handleMaterialImageDrop($event, $index)"
+            >
+              <img
+                v-if="row.imageUrl"
+                :src="row.imageUrl"
+                :alt="row.imageName || row.partNumber || 'Material'"
+                title="Ver imagen"
+                @click="openMaterialImagePreview(row)"
+              />
+              <div v-else class="material-image-placeholder">
+                <el-icon><Picture /></el-icon>
+                <span>Pegar imagen</span>
+              </div>
+              <label class="material-image-upload">
+                <input type="file" accept="image/*" @change="handleMaterialImageInput($event, $index)" />
+                <span>{{ row.__imageUploading ? 'Subiendo...' : row.imageUrl ? 'Cambiar' : 'Subir' }}</span>
+              </label>
+              <el-button v-if="row.imageUrl" size="small" text type="danger" @click="clearMaterialImage(row)">Quitar</el-button>
             </div>
           </template>
         </el-table-column>
@@ -260,6 +283,11 @@
           </template>
         </el-table-column>
       </el-table></div>
+      <div class="list-bottom-actions">
+        <el-button size="small" @click="catalogDialogVisible = true">Seleccionar del Catalogo</el-button>
+        <el-button size="small" @click="openMaterialUrlDialog()">Agregar desde liga</el-button>
+        <el-button size="small" type="primary" @click="addMaterial">Agregar Material</el-button>
+      </div>
     </el-card>
 
     <el-dialog v-model="catalogDialogVisible" title="Seleccionar Productos" width="min(1100px, 94vw)" @open="fetchCatalogProducts(1)">
@@ -397,10 +425,9 @@
       <template #header>
         <div class="page-header" style="margin: 0">
           <strong>Mano de Obra y Servicios</strong>
-          <el-button size="small" @click="addService">Agregar Servicio</el-button>
         </div>
       </template>
-      <div class="table-scroll"><el-table :data="quote.services" stripe>
+      <div class="table-scroll"><el-table :data="quote.services" stripe class="quote-line-items-table">
         <el-table-column label="" width="114" fixed="left">
           <template #default="{ $index }">
             <div
@@ -458,6 +485,9 @@
           </template>
         </el-table-column>
       </el-table></div>
+      <div class="list-bottom-actions">
+        <el-button size="small" type="primary" @click="addService">Agregar Servicio</el-button>
+      </div>
     </el-card>
 
     <el-card class="section-card">
@@ -540,6 +570,11 @@
         <span>{{ saveLabel }}</span>
       </el-button>
     </div>
+
+    <el-dialog v-model="materialImagePreviewVisible" :title="materialImagePreview.title || 'Imagen de material'" width="min(920px, 94vw)" class="material-image-preview-dialog">
+      <img v-if="materialImagePreview.url" :src="materialImagePreview.url" :alt="materialImagePreview.title || 'Imagen de material'" />
+      <p v-if="materialImagePreview.description" class="muted">{{ materialImagePreview.description }}</p>
+    </el-dialog>
   </div>
 </template>
 
@@ -547,7 +582,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowDown, ArrowLeft, ArrowUp, Check, Clock, Delete, Rank, RefreshRight, TopRight, Upload, Warning } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowLeft, ArrowUp, Check, Clock, Delete, Picture, Rank, RefreshRight, TopRight, Upload, Warning } from '@element-plus/icons-vue';
 import { useCustomerStore } from '../stores/customerStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useQuoteStore } from '../stores/quoteStore';
@@ -587,6 +622,12 @@ const materialUrlLoading = ref(false);
 const materialUrlPreview = ref<MaterialUrlExtractionResult | null>(null);
 const materialUrlError = ref('');
 const materialUrlTargetIndex = ref<number | null>(null);
+const materialImagePreviewVisible = ref(false);
+const materialImagePreview = reactive({
+  url: '',
+  title: '',
+  description: ''
+});
 const reviewLoading = ref(false);
 const reviewPrompt = ref('');
 const reviewCollapsed = ref(false);
@@ -749,7 +790,11 @@ function sanitizeMaterialRow(item: any) {
     notes: item.notes || '',
     sourceCurrency: item.sourceCurrency,
     sourceUnitCost: item.sourceUnitCost,
-    exchangeRateApplied: item.exchangeRateApplied
+    exchangeRateApplied: item.exchangeRateApplied,
+    imageUrl: item.imageUrl || '',
+    imageFileId: item.imageFileId || '',
+    imageName: item.imageName || '',
+    imageMimeType: item.imageMimeType || ''
   };
 }
 
@@ -813,7 +858,7 @@ function applyMaterialMarkup() {
 }
 
 function addMaterial() {
-  quote.materials.push(hydrateMaterialRow(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', providerId: null, quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '' })));
+  quote.materials.push(hydrateMaterialRow(updateMaterialTotals({ partNumber: '', description: '', brand: 'AutomationDirect', supplier: '', providerId: null, quantity: 1, unitCost: 0, markupPercentage: quote.commercial.materialMarkupPercentage, unitPrice: 0, totalPrice: 0, notes: '', imageUrl: '', imageFileId: '', imageName: '', imageMimeType: '' })));
 }
 
 function assignProviderToMaterial(material: any, providerId?: string | null) {
@@ -831,6 +876,78 @@ function clearMaterialProviderId(material: any) {
   material.providerId = null;
   material.__providerMode = 'text';
   material.__freeSupplierBackup = material.supplier || '';
+}
+
+function firstImageFile(files: FileList | File[] | null | undefined) {
+  return Array.from(files || []).find((file) => file.type.startsWith('image/')) || null;
+}
+
+async function ensureRemoteQuoteForMaterialImage() {
+  if (quote.id && !isLocalQuoteId(quote.id)) return quote.id;
+  await persistQuote({ manual: true });
+  if (quote.id && !isLocalQuoteId(quote.id)) return quote.id;
+  throw new Error('La cotizacion debe guardarse en el servidor antes de subir imagenes.');
+}
+
+async function uploadMaterialImageFile(file: File | null, rowIndex: number) {
+  if (!file) {
+    ElMessage.warning('Selecciona una imagen valida.');
+    return;
+  }
+
+  const currentRow = quote.materials[rowIndex];
+  if (!currentRow) return;
+  currentRow.__imageUploading = true;
+
+  try {
+    const quoteId = await ensureRemoteQuoteForMaterialImage();
+    const targetRow = quote.materials[rowIndex] || currentRow;
+    targetRow.__imageUploading = true;
+    const uploaded = await quotesApi.uploadMaterialImage(quoteId, file);
+    targetRow.imageUrl = uploaded.imageUrl;
+    targetRow.imageFileId = uploaded.imageFileId;
+    targetRow.imageName = uploaded.imageName || file.name;
+    targetRow.imageMimeType = uploaded.imageMimeType || file.type;
+    await persistQuote();
+    ElMessage.success('Imagen de material guardada');
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || error?.message || 'No fue posible subir la imagen');
+  } finally {
+    const targetRow = quote.materials[rowIndex] || currentRow;
+    if (targetRow) targetRow.__imageUploading = false;
+  }
+}
+
+function handleMaterialImageInput(event: Event, rowIndex: number) {
+  const input = event.target as HTMLInputElement;
+  void uploadMaterialImageFile(firstImageFile(input.files), rowIndex);
+  input.value = '';
+}
+
+function handleMaterialImagePaste(event: ClipboardEvent, rowIndex: number) {
+  const file = firstImageFile(event.clipboardData?.files);
+  if (!file) return;
+  event.preventDefault();
+  void uploadMaterialImageFile(file, rowIndex);
+}
+
+function handleMaterialImageDrop(event: DragEvent, rowIndex: number) {
+  void uploadMaterialImageFile(firstImageFile(event.dataTransfer?.files), rowIndex);
+}
+
+function clearMaterialImage(material: any) {
+  material.imageUrl = '';
+  material.imageFileId = '';
+  material.imageName = '';
+  material.imageMimeType = '';
+}
+
+function openMaterialImagePreview(material: any) {
+  if (!material.imageUrl) return;
+  materialImagePreview.url = material.imageUrl;
+  materialImagePreview.title = material.partNumber || material.imageName || 'Imagen de material';
+  materialImagePreview.description = material.description || '';
+  materialImagePreviewVisible.value = true;
 }
 
 function addProductToBom(product: any) {
@@ -1432,6 +1549,27 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.list-bottom-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.list-bottom-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.quote-line-items-table :deep(.el-table__row:hover > td.el-table__cell) {
+  background-color: rgba(123, 172, 66, 0.12) !important;
+}
+
+.quote-line-items-table :deep(.el-table__row:hover > td.el-table__cell.el-table-fixed-column--left),
+.quote-line-items-table :deep(.el-table__row:hover > td.el-table__cell.el-table-fixed-column--right) {
+  background-color: rgba(123, 172, 66, 0.14) !important;
+}
+
 .reorder-cell {
   display: flex;
   gap: 4px;
@@ -1474,6 +1612,63 @@ onBeforeUnmount(() => {
 
 .material-description-cell .el-button {
   justify-self: end;
+}
+
+.material-image-cell {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px dashed #c9d6c1;
+  border-radius: 12px;
+  background: rgba(123, 172, 66, 0.07);
+  outline: none;
+}
+
+.material-image-cell:focus-within,
+.material-image-cell:focus {
+  border-color: #7bac42;
+  box-shadow: 0 0 0 2px rgba(123, 172, 66, 0.16);
+}
+
+.material-image-cell img {
+  width: 76px;
+  height: 58px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #d7deea;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.material-image-placeholder {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-height: 58px;
+  color: #5f6f46;
+  font-size: 12px;
+}
+
+.material-image-upload {
+  cursor: pointer;
+  color: #2f6f1f;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.material-image-upload input {
+  display: none;
+}
+
+.material-image-preview-dialog img {
+  display: block;
+  max-width: 100%;
+  max-height: 72vh;
+  margin: 0 auto 12px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #f5f7fa;
 }
 
 .unit-cost-cell {

@@ -40,6 +40,19 @@
         <template #header>Lista de Materiales</template>
         <div class="table-scroll">
           <el-table :data="quote?.materials || []" stripe>
+          <el-table-column v-if="hasMaterialImages" label="Imagen" width="110">
+            <template #default="{ row }">
+              <img
+                v-if="row.imageUrl"
+                class="public-material-thumb"
+                :src="row.imageUrl"
+                :alt="row.imageName || row.partNumber || 'Material'"
+                title="Ver imagen"
+                @click="openMaterialImagePreview(row)"
+              />
+              <span v-else class="muted">-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="partNumber" label="Parte #" min-width="140" />
           <el-table-column prop="description" label="Descripcion" min-width="260" />
           <el-table-column prop="quantity" label="Cant." width="90" />
@@ -72,6 +85,24 @@
         </div>
       </el-card>
 
+      <el-card v-if="isUnifiedOutput && hasMaterialImages" class="section-card" shadow="never">
+        <template #header>Materiales de referencia</template>
+        <div class="public-material-gallery">
+          <article v-for="item in materialImages" :key="`${item.partNumber}-${item.imageUrl}`" class="public-material-card">
+            <img
+              :src="item.imageUrl"
+              :alt="item.imageName || item.partNumber || 'Material'"
+              title="Ver imagen"
+              @click="openMaterialImagePreview(item)"
+            />
+            <div>
+              <strong>{{ item.partNumber || 'Material' }}</strong>
+              <p>{{ item.description || item.imageName || 'Imagen de referencia' }}</p>
+            </div>
+          </article>
+        </div>
+      </el-card>
+
       <el-card shadow="never">
         <template #header>Terminos Comerciales</template>
         <div class="detail-list public-terms">
@@ -81,6 +112,11 @@
           <div><strong>Notas</strong><span>{{ quote?.notes || '-' }}</span></div>
         </div>
       </el-card>
+
+      <el-dialog v-model="materialImagePreviewVisible" :title="materialImagePreview.title || 'Imagen de material'" width="min(920px, 94vw)" class="public-material-preview-dialog">
+        <img v-if="materialImagePreview.url" :src="materialImagePreview.url" :alt="materialImagePreview.title || 'Imagen de material'" />
+        <p v-if="materialImagePreview.description" class="muted">{{ materialImagePreview.description }}</p>
+      </el-dialog>
     </div>
   </div>
 </template>
@@ -101,6 +137,10 @@ const quote = ref<any>(null);
 const loading = ref(false);
 const recipientContact = computed(() => getContactById(quote.value?.customerSnapshot, quote.value?.recipientContactId));
 const isUnifiedOutput = computed(() => quote.value?.outputMode === 'unified');
+const materialImages = computed(() => (quote.value?.materials || []).filter((item: any) => item.imageUrl));
+const hasMaterialImages = computed(() => materialImages.value.length > 0);
+const materialImagePreviewVisible = ref(false);
+const materialImagePreview = ref({ url: '', title: '', description: '' });
 const taxMultiplier = computed(() => 1 + Number(quote.value?.commercial?.taxPercentage || 0) / 100);
 const materialsTotalWithTax = computed(() => roundMoney(Number(quote.value?.totals?.materialsSubtotal || 0) * taxMultiplier.value));
 const laborTotalWithTax = computed(() => roundMoney(Number(quote.value?.totals?.laborSubtotal || 0) * taxMultiplier.value));
@@ -115,6 +155,16 @@ function money(value: number) {
 
 function quoteStatusLabel(status: string) {
   return quoteStatusLabels[status] || status;
+}
+
+function openMaterialImagePreview(material: any) {
+  if (!material.imageUrl) return;
+  materialImagePreview.value = {
+    url: material.imageUrl,
+    title: material.partNumber || material.imageName || 'Imagen de material',
+    description: material.description || ''
+  };
+  materialImagePreviewVisible.value = true;
 }
 
 async function downloadPdf() {
@@ -147,5 +197,57 @@ onMounted(async () => {
   padding-top: 12px;
   border-top: 1px solid #e4e7ed;
   color: #303133;
+}
+
+.public-material-thumb {
+  width: 72px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #d7deea;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.public-material-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.public-material-card {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #dfe7d8;
+  border-radius: 14px;
+  background: rgba(123, 172, 66, 0.08);
+}
+
+.public-material-card img {
+  width: 92px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid #d7deea;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.public-material-card p {
+  margin: 6px 0 0;
+  color: #667085;
+}
+
+.public-material-preview-dialog img {
+  display: block;
+  max-width: 100%;
+  max-height: 72vh;
+  margin: 0 auto 12px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #f5f7fa;
 }
 </style>

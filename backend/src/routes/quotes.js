@@ -3,6 +3,12 @@ import { customerRepository } from '../repositories/customerRepository.js';
 import { deleted, notFound } from '../utils/http.js';
 import { getCustomerContact, normalizeCustomer } from '../utils/customerContacts.js';
 import { buildClientQuoteUrl } from '../utils/quoteSharing.js';
+import {
+  isSupportedQuoteImageMime,
+  quoteImageMimeFromName,
+  readQuoteMaterialImage,
+  saveQuoteMaterialImage
+} from '../utils/quoteImageStorage.js';
 import { sendQuoteClientLinkEmail } from '../services/mailService.js';
 
 export async function quoteRoutes(app) {
@@ -26,6 +32,18 @@ export async function quoteRoutes(app) {
     };
   });
 
+  app.get('/api/public/quote-images/:quoteId/:fileName', async (request, reply) => {
+    try {
+      const buffer = await readQuoteMaterialImage(request.params);
+      return reply
+        .header('Content-Type', quoteImageMimeFromName(request.params.fileName))
+        .header('Cache-Control', 'public, max-age=31536000, immutable')
+        .send(buffer);
+    } catch (_error) {
+      return notFound(reply, 'Quote image');
+    }
+  });
+
   app.get('/api/quotes', async () => quoteRepository.list());
 
   app.post('/api/quotes', async (request, reply) => {
@@ -46,6 +64,30 @@ export async function quoteRoutes(app) {
   app.delete('/api/quotes/:id', async (request, reply) => {
     await quoteRepository.remove(request.params.id);
     return deleted(reply);
+  });
+
+  app.post('/api/quotes/:id/material-images', async (request, reply) => {
+    const quote = await quoteRepository.findById(request.params.id);
+    if (!quote) return notFound(reply, 'Quote');
+
+    const file = await request.file();
+    if (!file) return reply.code(400).send({ message: 'Missing image file' });
+    if (!isSupportedQuoteImageMime(file.mimetype)) {
+      return reply.code(400).send({ message: 'Only JPG, PNG, WEBP, and GIF images are supported' });
+    }
+
+    const buffer = await file.toBuffer();
+    const saved = await saveQuoteMaterialImage({
+      quoteId: quote.id,
+      filename: file.filename,
+      mimeType: file.mimetype,
+      buffer
+    });
+
+    return reply.code(201).send({
+      ...saved,
+      size: file.file.bytesRead || buffer.length
+    });
   });
 
   app.post('/api/quotes/:id/duplicate', async (request, reply) => {

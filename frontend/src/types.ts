@@ -53,6 +53,10 @@ export interface MaterialItem {
   sourceCurrency?: Currency;
   sourceUnitCost?: number;
   exchangeRateApplied?: number;
+  imageUrl?: string;
+  imageFileId?: string;
+  imageName?: string;
+  imageMimeType?: string;
 }
 
 export interface MaterialUrlExtractionResult {

@@ -39,7 +39,12 @@ export const quotesApi = {
   family: (id: string) => api.get(`/quotes/${id}/family`).then((res) => res.data),
   revise: (id: string) => api.post(`/quotes/${id}/revise`).then((res) => res.data),
   createVariant: (id: string, data: unknown) => api.post(`/quotes/${id}/variant`, data).then((res) => res.data),
-  sendClientLink: (id: string, data: unknown) => api.post(`/quotes/${id}/send-client-link`, data).then((res) => res.data)
+  sendClientLink: (id: string, data: unknown) => api.post(`/quotes/${id}/send-client-link`, data).then((res) => res.data),
+  uploadMaterialImage: (id: string, file: File) => {
+    const data = new FormData();
+    data.append('file', file);
+    return api.post(`/quotes/${id}/material-images`, data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((res) => res.data);
+  }
 };
 
 export const serviceRatesApi = {

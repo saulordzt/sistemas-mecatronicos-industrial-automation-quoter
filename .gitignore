@@ -20,6 +20,7 @@ coverage/
 .cache/
 
 tmp/
+.uploads/
 *.pid
 
 Manual_SistemasMecatronicos_page-*.jpg
