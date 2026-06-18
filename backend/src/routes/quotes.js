@@ -5,11 +5,66 @@ import { getCustomerContact, normalizeCustomer } from '../utils/customerContacts
 import { buildClientQuoteUrl } from '../utils/quoteSharing.js';
 import {
   isSupportedQuoteImageMime,
+  maxQuoteImageBytes,
+  normalizeQuoteImageMime,
   quoteImageMimeFromName,
   readQuoteMaterialImage,
   saveQuoteMaterialImage
 } from '../utils/quoteImageStorage.js';
 import { sendQuoteClientLinkEmail } from '../services/mailService.js';
+
+function fileNameFromImageUrl(imageUrl) {
+  try {
+    const parsed = new URL(imageUrl);
+    const name = parsed.pathname.split('/').filter(Boolean).pop();
+    return name || 'linked-material-image';
+  } catch (_error) {
+    return 'linked-material-image';
+  }
+}
+
+async function fetchQuoteImageFromUrl(imageUrl) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(String(imageUrl || '').trim());
+  } catch (_error) {
+    throw Object.assign(new Error('Enter a valid image URL'), { statusCode: 400 });
+  }
+
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw Object.assign(new Error('Only HTTP and HTTPS image links are supported'), { statusCode: 400 });
+  }
+
+  const response = await fetch(parsedUrl, {
+    signal: AbortSignal.timeout(10000),
+    headers: { Accept: 'image/jpeg,image/png,image/webp,image/gif' }
+  });
+
+  if (!response.ok) {
+    throw Object.assign(new Error('The image link could not be downloaded'), { statusCode: 400 });
+  }
+
+  const contentType = normalizeQuoteImageMime(response.headers.get('content-type') || '');
+  if (!isSupportedQuoteImageMime(contentType)) {
+    throw Object.assign(new Error('The link must return a JPG, PNG, WEBP, or GIF image'), { statusCode: 400 });
+  }
+
+  const contentLength = Number(response.headers.get('content-length') || 0);
+  if (contentLength > maxQuoteImageBytes) {
+    throw Object.assign(new Error('Image links must be 8 MB or smaller'), { statusCode: 413 });
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > maxQuoteImageBytes) {
+    throw Object.assign(new Error('Image links must be 8 MB or smaller'), { statusCode: 413 });
+  }
+
+  return {
+    buffer,
+    mimeType: contentType,
+    filename: fileNameFromImageUrl(parsedUrl.href)
+  };
+}
 
 export async function quoteRoutes(app) {
   app.get('/api/public/quotes/:id', async (request, reply) => {
@@ -88,6 +143,29 @@ export async function quoteRoutes(app) {
       ...saved,
       size: file.file.bytesRead || buffer.length
     });
+  });
+
+  app.post('/api/quotes/:id/material-images/from-url', async (request, reply) => {
+    const quote = await quoteRepository.findById(request.params.id);
+    if (!quote) return notFound(reply, 'Quote');
+
+    try {
+      const image = await fetchQuoteImageFromUrl(request.body?.imageUrl);
+      const saved = await saveQuoteMaterialImage({
+        quoteId: quote.id,
+        filename: image.filename,
+        mimeType: image.mimeType,
+        buffer: image.buffer
+      });
+
+      return reply.code(201).send({
+        ...saved,
+        sourceUrl: request.body.imageUrl,
+        size: image.buffer.length
+      });
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({ message: error.message || 'The image link could not be saved' });
+    }
   });
 
   app.post('/api/quotes/:id/duplicate', async (request, reply) => {

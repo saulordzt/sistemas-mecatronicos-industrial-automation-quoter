@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const defaultUploadRoot = fileURLToPath(new URL('../../../.uploads/quote-images/', import.meta.url));
 const uploadRoot = process.env.QUOTE_IMAGE_UPLOAD_DIR || defaultUploadRoot;
+export const maxQuoteImageBytes = 8 * 1024 * 1024;
 
 const mimeExtensions = new Map([
   ['image/jpeg', '.jpg'],
@@ -27,7 +28,11 @@ function safeSegment(value, fallback = 'file') {
 }
 
 export function isSupportedQuoteImageMime(mimeType = '') {
-  return mimeExtensions.has(String(mimeType).toLowerCase());
+  return mimeExtensions.has(normalizeQuoteImageMime(mimeType));
+}
+
+export function normalizeQuoteImageMime(mimeType = '') {
+  return String(mimeType).split(';')[0].trim().toLowerCase();
 }
 
 export function quoteImageMimeFromName(fileName = '') {
@@ -37,7 +42,8 @@ export function quoteImageMimeFromName(fileName = '') {
 export async function saveQuoteMaterialImage({ quoteId, filename, mimeType, buffer }) {
   const safeQuoteId = safeSegment(quoteId, 'quote');
   const originalName = safeSegment(filename, 'material-image');
-  const extension = mimeExtensions.get(String(mimeType || '').toLowerCase()) || extname(originalName) || '.img';
+  const normalizedMimeType = normalizeQuoteImageMime(mimeType);
+  const extension = mimeExtensions.get(normalizedMimeType) || extname(originalName) || '.img';
   const storedName = `${Date.now()}-${randomUUID()}${extension}`;
   const dir = join(uploadRoot, safeQuoteId);
   await mkdir(dir, { recursive: true });
@@ -46,7 +52,7 @@ export async function saveQuoteMaterialImage({ quoteId, filename, mimeType, buff
     imageFileId: `${safeQuoteId}/${storedName}`,
     imageUrl: `/api/public/quote-images/${safeQuoteId}/${storedName}`,
     imageName: originalName,
-    imageMimeType: mimeType,
+    imageMimeType: normalizedMimeType,
     storedName
   };
 }

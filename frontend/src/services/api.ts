@@ -44,7 +44,9 @@ export const quotesApi = {
     const data = new FormData();
     data.append('file', file);
     return api.post(`/quotes/${id}/material-images`, data, { headers: { 'Content-Type': 'multipart/form-data' } }).then((res) => res.data);
-  }
+  },
+  uploadMaterialImageFromUrl: (id: string, imageUrl: string) =>
+    api.post(`/quotes/${id}/material-images/from-url`, { imageUrl }).then((res) => res.data)
 };
 
 export const serviceRatesApi = {

@@ -186,7 +186,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="Imagen" width="150">
+        <el-table-column label="Imagen" width="168">
           <template #default="{ row, $index }">
             <div
               class="material-image-cell"
@@ -204,12 +204,13 @@
               />
               <div v-else class="material-image-placeholder">
                 <el-icon><Picture /></el-icon>
-                <span>Pegar imagen</span>
+                <span>Pegar imagen o liga</span>
               </div>
               <label class="material-image-upload">
                 <input type="file" accept="image/*" @change="handleMaterialImageInput($event, $index)" />
                 <span>{{ row.__imageUploading ? 'Subiendo...' : row.imageUrl ? 'Cambiar' : 'Subir' }}</span>
               </label>
+              <el-button size="small" text @click="promptMaterialImageUrl($index)">Liga</el-button>
               <el-button v-if="row.imageUrl" size="small" text type="danger" @click="clearMaterialImage(row)">Quitar</el-button>
             </div>
           </template>
@@ -882,6 +883,17 @@ function firstImageFile(files: FileList | File[] | null | undefined) {
   return Array.from(files || []).find((file) => file.type.startsWith('image/')) || null;
 }
 
+function firstClipboardImageUrl(event: ClipboardEvent) {
+  const text = event.clipboardData?.getData('text/plain')?.trim();
+  if (!text) return '';
+  try {
+    const parsed = new URL(text);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch (_error) {
+    return '';
+  }
+}
+
 async function ensureRemoteQuoteForMaterialImage() {
   if (quote.id && !isLocalQuoteId(quote.id)) return quote.id;
   await persistQuote({ manual: true });
@@ -889,12 +901,7 @@ async function ensureRemoteQuoteForMaterialImage() {
   throw new Error('La cotizacion debe guardarse en el servidor antes de subir imagenes.');
 }
 
-async function uploadMaterialImageFile(file: File | null, rowIndex: number) {
-  if (!file) {
-    ElMessage.warning('Selecciona una imagen valida.');
-    return;
-  }
-
+async function applyUploadedMaterialImage(rowIndex: number, uploadAction: (quoteId: string) => Promise<any>, fallbackName = '') {
   const currentRow = quote.materials[rowIndex];
   if (!currentRow) return;
   currentRow.__imageUploading = true;
@@ -903,18 +910,51 @@ async function uploadMaterialImageFile(file: File | null, rowIndex: number) {
     const quoteId = await ensureRemoteQuoteForMaterialImage();
     const targetRow = quote.materials[rowIndex] || currentRow;
     targetRow.__imageUploading = true;
-    const uploaded = await quotesApi.uploadMaterialImage(quoteId, file);
+    const uploaded = await uploadAction(quoteId);
     targetRow.imageUrl = uploaded.imageUrl;
     targetRow.imageFileId = uploaded.imageFileId;
-    targetRow.imageName = uploaded.imageName || file.name;
-    targetRow.imageMimeType = uploaded.imageMimeType || file.type;
+    targetRow.imageName = uploaded.imageName || fallbackName;
+    targetRow.imageMimeType = uploaded.imageMimeType || '';
     await persistQuote();
     ElMessage.success('Imagen de material guardada');
   } catch (error: any) {
-    ElMessage.error(error?.response?.data?.message || error?.message || 'No fue posible subir la imagen');
+    ElMessage.error(error?.response?.data?.message || error?.message || 'No fue posible guardar la imagen');
   } finally {
     const targetRow = quote.materials[rowIndex] || currentRow;
     if (targetRow) targetRow.__imageUploading = false;
+  }
+}
+
+async function uploadMaterialImageFile(file: File | null, rowIndex: number) {
+  if (!file) {
+    ElMessage.warning('Selecciona una imagen valida.');
+    return;
+  }
+
+  await applyUploadedMaterialImage(rowIndex, (quoteId) => quotesApi.uploadMaterialImage(quoteId, file), file.name);
+}
+
+async function uploadMaterialImageUrl(imageUrl: string, rowIndex: number) {
+  const trimmedUrl = imageUrl.trim();
+  if (!trimmedUrl) {
+    ElMessage.warning('Pega una liga de imagen valida.');
+    return;
+  }
+
+  await applyUploadedMaterialImage(rowIndex, (quoteId) => quotesApi.uploadMaterialImageFromUrl(quoteId, trimmedUrl), trimmedUrl);
+}
+
+async function promptMaterialImageUrl(rowIndex: number) {
+  try {
+    const result = await ElMessageBox.prompt('Pega la liga directa de la imagen.', 'Agregar imagen desde liga', {
+      confirmButtonText: 'Guardar imagen',
+      cancelButtonText: 'Cancelar',
+      inputPattern: /^https?:\/\/\S+/i,
+      inputErrorMessage: 'Usa una liga HTTP o HTTPS valida.'
+    });
+    await uploadMaterialImageUrl(result.value, rowIndex);
+  } catch (_error) {
+    // User cancelled the prompt.
   }
 }
 
@@ -926,9 +966,15 @@ function handleMaterialImageInput(event: Event, rowIndex: number) {
 
 function handleMaterialImagePaste(event: ClipboardEvent, rowIndex: number) {
   const file = firstImageFile(event.clipboardData?.files);
-  if (!file) return;
+  if (file) {
+    event.preventDefault();
+    void uploadMaterialImageFile(file, rowIndex);
+    return;
+  }
+  const imageUrl = firstClipboardImageUrl(event);
+  if (!imageUrl) return;
   event.preventDefault();
-  void uploadMaterialImageFile(file, rowIndex);
+  void uploadMaterialImageUrl(imageUrl, rowIndex);
 }
 
 function handleMaterialImageDrop(event: DragEvent, rowIndex: number) {
